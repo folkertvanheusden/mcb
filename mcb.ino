@@ -8,23 +8,11 @@ const char *const   mqtt_topic       = "meshcore/bridge";
 const char *const   mqtt_server      = "vps001.vanheusden.com";
 constexpr const int mqtt_server_port = 1883;
 
-/*
-spi:
-  clk_pin: 7
-  mosi_pin: 9
-  miso_pin: 8
-sx126x:
-  busy_pin: GPIO4
-  cs_pin: GPIO5
-  dio1_pin: GPIO2
-  rst_pin: GPIO3
-*/
-
 // SX1262 has the following connections:
-// NSS pin:   10
+// NSS pin:   5
 // DIO1 pin:  2
 // NRST pin:  3
-// BUSY pin:  9
+// BUSY pin:  4
 SX1262 radio = new Module(5, 2, 3, 4);
 
 #define MAX_LORA_MSG_SIZE 384
@@ -111,26 +99,15 @@ void setup() {
   Serial.begin(115200);
   Serial.setDebugOutput(true);
 
-  Serial.print(F("[SX1262] Initializing ... "));
-  int state = radio.begin();
-  if (state == RADIOLIB_ERR_NONE) {
-    Serial.println(F("success!"));
-  }
-  else {
-    Serial.print(F("failed, code "));
-    Serial.println(state);
-    ESP.restart();
-  }
-
   Serial.print(F("[SX126x] Initializing ... "));
-  // carrier frequency:           915.0 MHz
-  // bandwidth:                   500.0 kHz
-  // spreading factor:            6
-  // coding rate:                 5
-  // sync word:                   0x34 (public network/LoRaWAN)
-  // output power:                2 dBm
-  // preamble length:             20 symbols
-  state = radio.begin(869.618, 62.5, 8, 8, 0x12, 22, 16);
+  // carrier frequency:           869.618 MHz
+  // bandwidth:                   62.5 kHz
+  // spreading factor:            8
+  // coding rate:                 8
+  // sync word:                   0x12
+  // output power:                22 dBm
+  // preamble length:             16 symbols
+  auto state = radio.begin(869.618, 62.5, 8, 8, 0x12, 22, 16);
   if (state == RADIOLIB_ERR_NONE)
     Serial.println(F("success!"));
   else {
@@ -160,10 +137,14 @@ void check_mqtt(void) {
   mqtt_client.loop();
 
   if (!mqtt_client.connected()) {
-    if (!mqtt_client.connect("LoRaBridge"))
-       ESP.restart();
-    if (!mqtt_client.subscribe(mqtt_topic))
-       ESP.restart();
+    if (!mqtt_client.connect("LoRaBridge")) {
+      Serial.println(F("MQTT connect failed"));
+      ESP.restart();
+    }
+    if (!mqtt_client.subscribe(mqtt_topic)) {
+      Serial.println(F("MQTT subscribe failed"));
+      ESP.restart();
+    }
   }
 }
 
