@@ -8,6 +8,7 @@
 const char *const   mqtt_topic       = "meshcore/bridge";
 const char *const   mqtt_server      = "vps001.vanheusden.com";
 constexpr const int mqtt_server_port = 1883;
+#define MQTT_NAME "LoRaBridge"
 
 // LoRa settings
 #define CARRIER_FREQ 869.618
@@ -24,6 +25,11 @@ constexpr const int mqtt_server_port = 1883;
 // NRST pin:  3
 // BUSY pin:  4
 SX1262 radio = new Module(5, 2, 3, 4);
+
+// WiFi settings
+#define WIFI_PORTAL_TIMEOUT 60
+#define WIFI_CONNECT_TIMEOUT 15
+#define WIFI_NAME "LoRaBridge"
 
 #define MAX_LORA_MSG_SIZE 384
 
@@ -137,9 +143,9 @@ void setup() {
   }
 
   WiFiManager wm;
-  wm.setConfigPortalTimeout(60);
-  wm.setConnectTimeout(15);
-  if (!wm.autoConnect("LoRaBridge")) {
+  wm.setConfigPortalTimeout(WIFI_PORTAL_TIMEOUT);
+  wm.setConnectTimeout(WIFI_CONNECT_TIMEOUT);
+  if (!wm.autoConnect(WIFI_NAME)) {
     Serial.print(F("WiFi failed, code "));
     Serial.println(state);
     ESP.restart();
@@ -153,7 +159,7 @@ void check_mqtt(void) {
   mqtt_client.loop();
 
   if (!mqtt_client.connected()) {
-    if (!mqtt_client.connect("LoRaBridge")) {
+    if (!mqtt_client.connect(MQTT_NAME)) {
       Serial.println(F("MQTT connect failed"));
       ESP.restart();
     }
