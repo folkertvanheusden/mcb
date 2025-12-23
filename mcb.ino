@@ -24,7 +24,13 @@ constexpr const int mqtt_server_port = 1883;
 // DIO1 pin:  2
 // NRST pin:  3
 // BUSY pin:  4
+#if defined(XIAO_HEADERS)
 SX1262 radio = new Module(5, 2, 3, 4);
+#elif defined(XIAO_CONNECTOR)
+SX1262 radio = new Module(41, 39, 42, 40);
+#else
+#error please configure the XIAO to SX1262 pins in mcb.ino
+#endif
 
 // WiFi settings
 #define WIFI_PORTAL_TIMEOUT 60
@@ -159,6 +165,8 @@ void check_mqtt(void) {
   mqtt_client.loop();
 
   if (!mqtt_client.connected()) {
+    Serial.println(F(" *** MQTT reconnect"));
+    mqtt_client.disconnect();
     if (!mqtt_client.connect(MQTT_NAME)) {
       Serial.println(F("MQTT connect failed"));
       ESP.restart();

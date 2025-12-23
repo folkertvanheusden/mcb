@@ -20,9 +20,10 @@ It works transparently: you only need to know LoRa settings and then it should b
 
 * flash it:
 ```bash
-pio run -t upload
+pio run -t upload -e X
 ```
-connect to the wifi station called "LoRaBridge" and configure its WiFi connection, that's it!
+X shall be either xiao_headers (sx1262 via dupont cables) or xiao_connector (using the special connector on the xiao board: https://www.antratek.nl/xiao-esp32s3-for-meshtastic-lora).
+* Connect to the wifi station called "LoRaBridge" and configure its WiFi connection, that's it!
 It will blink the LED when packets are seen (on MQTT or RF).
 
 
