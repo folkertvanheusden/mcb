@@ -85,6 +85,9 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length)
   memcpy(mqtt_entries[n_mqtt_entries].buffer, payload, length);
   mqtt_entries[n_mqtt_entries].n = length;
   n_mqtt_entries++;
+
+  Serial.print(F("MQTT msg size: "));
+  Serial.println(length);
 }
 
 WiFiClient wifi_client;
@@ -197,6 +200,14 @@ void loop() {
   if (rf_received.exchange(false)) {
     int num_bytes = radio.getPacketLength();
     int state     = radio.readData(rf_buffer, num_bytes);
+    Serial.print(F("RF msg size: "));
+    Serial.print(num_bytes);
+    Serial.print(F(", RSSI: "));
+    Serial.print(radio.getRSSI(true));
+    Serial.print(F(", SNR: "));
+    Serial.print(radio.getSNR());
+    Serial.print(F(", freqerr: "));
+    Serial.println(radio.getFrequencyError());
     if (num_bytes > sizeof(rf_buffer)) {
       Serial.print(F("Truncated: "));
       Serial.print(num_bytes - sizeof(rf_buffer));
