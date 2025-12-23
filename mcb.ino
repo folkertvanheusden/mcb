@@ -4,11 +4,21 @@
 #include <RadioLib.h>
 #include <WiFiManager.h>
 
+// MQTT settings
 const char *const   mqtt_topic       = "meshcore/bridge";
 const char *const   mqtt_server      = "vps001.vanheusden.com";
 constexpr const int mqtt_server_port = 1883;
 
-// SX1262 has the following connections:
+// LoRa settings
+#define CARRIER_FREQ 869.618
+#define BANDWIDTH    62.5
+#define SF           8
+#define CR           8
+#define SYNC_WORD    0x12
+#define POWER        22
+#define PREAMBLE     16
+
+// SX1262 radio setup
 // NSS pin:   5
 // DIO1 pin:  2
 // NRST pin:  3
@@ -109,7 +119,7 @@ void setup() {
   // sync word:                   0x12
   // output power:                22 dBm
   // preamble length:             16 symbols
-  auto state = radio.begin(869.618, 62.5, 8, 8, 0x12, 22, 16);
+  auto state = radio.begin(CARRIER_FREQ, BANDWIDTH, SF, CR, SYNC_WORD, POWER, PREAMBLE);
   if (state == RADIOLIB_ERR_NONE)
     Serial.println(F("success!"));
   else {
