@@ -207,22 +207,26 @@ void loop() {
     Serial.print(F(", SNR: "));
     Serial.print(radio.getSNR());
     Serial.print(F(", freqerr: "));
-    Serial.println(radio.getFrequencyError());
+    Serial.print(radio.getFrequencyError());
+    Serial.print(F(" - "));
     if (num_bytes > sizeof(rf_buffer)) {
-      Serial.print(F("Truncated: "));
+      Serial.print(F("truncated: "));
       Serial.print(num_bytes - sizeof(rf_buffer));
-      Serial.print(F(" too short"));
+      Serial.println(F(" too short"));
     }
     else if (state == RADIOLIB_ERR_NONE) {
-      if (register_packet(rf_buffer, num_bytes))
+      if (register_packet(rf_buffer, num_bytes)) {
         mqtt_transmit(rf_buffer, num_bytes);
-      else
+        Serial.println(F(""));
+      }
+      else {
         Serial.println(F("rf -> mqtt: dedupped"));
+      }
     }
     else if (state == RADIOLIB_ERR_CRC_MISMATCH)
-      Serial.println(F("Recv CRC mismatch"));
+      Serial.println(F("CRC mismatch"));
     else {
-      Serial.print(F("Recv failed: "));
+      Serial.print(F("recv failed: "));
       Serial.println(state);
     }
   }
