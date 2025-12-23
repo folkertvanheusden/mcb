@@ -18,7 +18,12 @@ It works transparently: you only need to know LoRa settings and then it should b
 
 ## usage
 
-* flash it, connect to the wifi station called "LoRaBridge" and configure its WiFi connection, that's it
+* flash it:
+```bash
+pio run -t upload
+```
+connect to the wifi station called "LoRaBridge" and configure its WiFi connection, that's it!
+It will blink the LED when packets are seen (on MQTT or RF).
 
 
 ## see also
