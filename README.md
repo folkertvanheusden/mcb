@@ -7,7 +7,7 @@ It works transparently: you only need to know LoRa settings and then it should b
 
 ## required
 
-* an SX1262 radio connected to an ESP32-S3
+* an SX1262 radio connected to an ESP32-S3, I use a XIAO S3 device
 * platformio
 
 
@@ -22,8 +22,8 @@ It works transparently: you only need to know LoRa settings and then it should b
 ```bash
 pio run -t upload -e X
 ```
-X shall be either xiao_headers (sx1262 via dupont cables) or xiao_connector (using the special connector on the xiao board: https://www.antratek.nl/xiao-esp32s3-for-meshtastic-lora).
-* Connect to the wifi station called "LoRaBridge" and configure its WiFi connection, that's it!
+X shall be either `xiao_headers` (sx1262 via dupont cables) or `xiao_connector` (using the special connector on the xiao board: https://www.antratek.nl/xiao-esp32s3-for-meshtastic-lora).
+* Connect to the WiFi station called "`LoRaBridge`" and configure its WiFi connection, that's it!
 It will blink the LED when packets are seen (on MQTT or RF).
 
 
