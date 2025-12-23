@@ -99,6 +99,8 @@ void setup() {
   Serial.begin(115200);
   Serial.setDebugOutput(true);
 
+  pinMode(LED_BUILTIN, OUTPUT);
+
   Serial.print(F("[SX126x] Initializing ... "));
   // carrier frequency:           869.618 MHz
   // bandwidth:                   62.5 kHz
@@ -149,10 +151,13 @@ void check_mqtt(void) {
 }
 
 void mqtt_transmit(const uint8_t *const pl, const size_t len) {
+  digitalWrite(LED_BUILTIN, HIGH);
   mqtt_client.publish(mqtt_topic, pl, len, false);
+  digitalWrite(LED_BUILTIN, LOW);
 }
 
 void rf_transmit(const uint8_t *const pl, const size_t len) {
+  digitalWrite(LED_BUILTIN, HIGH);
   int state = radio.transmit(pl, len);
 
   if (state == RADIOLIB_ERR_NONE) {
@@ -173,6 +178,7 @@ void rf_transmit(const uint8_t *const pl, const size_t len) {
     Serial.print(F("rf transmission failed, code "));
     Serial.println(state);
   }
+  digitalWrite(LED_BUILTIN, LOW);
 }
 
 void loop() {
