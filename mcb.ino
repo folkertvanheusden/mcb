@@ -174,7 +174,7 @@ void rf_transmit(const uint8_t *const pl, const size_t len) {
   int state = radio.transmit(pl, len);
 
   if (state == RADIOLIB_ERR_NONE) {
-    Serial.print(F("packet transmitted via RF, data rate:"));
+    Serial.print(F("packet transmitted via RF, data rate: "));
     Serial.print(radio.getDataRate());
     Serial.println(F(" bps"));
   }
@@ -220,7 +220,7 @@ void loop() {
         Serial.println(F("rf -> mqtt: dedupped"));
     }
     else if (state == RADIOLIB_ERR_CRC_MISMATCH)
-      Serial.print(F("Recv CRC mismatch"));
+      Serial.println(F("Recv CRC mismatch"));
     else {
       Serial.print(F("Recv failed: "));
       Serial.println(state);
