@@ -138,6 +138,7 @@ void setup() {
 
   WiFiManager wm;
   wm.setConfigPortalTimeout(60);
+  wm.setConnectTimeout(15);
   if (!wm.autoConnect("LoRaBridge")) {
     Serial.print(F("WiFi failed, code "));
     Serial.println(state);
