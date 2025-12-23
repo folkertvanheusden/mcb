@@ -13,7 +13,7 @@ It works transparently: you only need to know LoRa settings and then it should b
 
 ## configuration
 
-* For it to work you must adjust mcb.ino (e.g. pin numbers, topic, mqtt server)
+* For it to work you must adjust mcb.ino (e.g. pin numbers, topic, mqtt server, LoRa settings).
 
 
 ## usage
