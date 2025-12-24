@@ -39,7 +39,7 @@ SX1262 radio = new Module(8, 14, 12, 13);
 #define WIFI_CONNECT_TIMEOUT 15
 #define WIFI_NAME "LoRaBridge"
 
-#define MAX_LORA_MSG_SIZE 384
+#define MAX_LORA_MSG_SIZE RADIOLIB_SX126X_MAX_PACKET_LENGTH
 
 struct mqtt_entry {
   uint8_t  buffer[MAX_LORA_MSG_SIZE];
