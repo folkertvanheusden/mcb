@@ -127,13 +127,6 @@ void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
 
   Serial.print(F("[SX126x] Initializing ... "));
-  // carrier frequency:           869.618 MHz
-  // bandwidth:                   62.5 kHz
-  // spreading factor:            8
-  // coding rate:                 8
-  // sync word:                   0x12
-  // output power:                22 dBm
-  // preamble length:             16 symbols
   auto state = radio.begin(CARRIER_FREQ, BANDWIDTH, SF, CR, SYNC_WORD, POWER, PREAMBLE);
   if (state == RADIOLIB_ERR_NONE)
     Serial.println(F("success!"));
