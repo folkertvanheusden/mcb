@@ -58,8 +58,7 @@ uint32_t dedup_hashes[MAX_N_DEDUP_HASHES];
 int dedup_hash_index = 0;
 
 // hash function
-uint32_t adler32(const void *buf, size_t buflength)
-{
+uint32_t adler32(const void *const buf, const size_t buflength) {
         const uint8_t *buffer = reinterpret_cast<const uint8_t *>(buf);
 
         uint32_t s1 = 1;
@@ -73,8 +72,7 @@ uint32_t adler32(const void *buf, size_t buflength)
         return (s2 << 16) | s1;
 }
 
-bool register_packet(const uint8_t *const pl, const size_t len)
-{
+bool register_packet(const uint8_t *const pl, const size_t len) {
   uint32_t hash = adler32(pl, len);
 
   for(int i=0; i<MAX_N_DEDUP_HASHES; i++) {
@@ -88,8 +86,7 @@ bool register_packet(const uint8_t *const pl, const size_t len)
   return true;
 }
 
-void mqtt_callback(char* topic, byte* payload, unsigned int length)
-{
+void mqtt_callback(char* topic, byte* payload, unsigned int length) {
   std::unique_lock<std::mutex> lck(mqtt_lock);
   if (n_mqtt_entries >= MAX_N_MQTT_ENTRIES) {
     Serial.println(F("MQTT recv buffer full"));
