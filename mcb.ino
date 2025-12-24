@@ -28,8 +28,10 @@ constexpr const int mqtt_server_port = 1883;
 SX1262 radio = new Module(5, 2, 3, 4);
 #elif defined(XIAO_CONNECTOR)
 SX1262 radio = new Module(41, 39, 42, 40);
+#elif defined(HELTEC_V3)
+SX1262 radio = new Module(8, 14, 12, 13);
 #else
-#error please configure the XIAO to SX1262 pins in mcb.ino
+#error please configure the ESP32 to SX1262 pins in mcb.ino
 #endif
 
 // WiFi settings
