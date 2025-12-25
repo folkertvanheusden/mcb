@@ -53,7 +53,7 @@ int n_mqtt_entries = 0;
 
 uint8_t rf_buffer[MAX_LORA_MSG_SIZE];
 
-#define MAX_N_DEDUP_HASHES 16
+#define MAX_N_DEDUP_HASHES 256
 uint32_t dedup_hashes[MAX_N_DEDUP_HASHES];
 int dedup_hash_index = 0;
 
@@ -89,14 +89,17 @@ bool register_packet(const uint8_t *const pl, const size_t len) {
 }
 
 void mqtt_callback(char* topic, byte* payload, unsigned int length) {
+  Serial.print(F("MQTT "));
+  Serial.print(topic);
+  Serial.print(F(": "));
   if (length == 0) {
-    Serial.println(F("Ignoring empty MQTT msg"));
+    Serial.println(F(", ignoring empty msg"));
     return;
   }
 
   std::unique_lock<std::mutex> lck(mqtt_lock);
   if (n_mqtt_entries >= MAX_N_MQTT_ENTRIES) {
-    Serial.println(F("MQTT recv buffer full"));
+    Serial.println(F(", recv buffer full"));
     return;
   }
 
@@ -104,7 +107,7 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length) {
   mqtt_entries[n_mqtt_entries].n = length;
   n_mqtt_entries++;
 
-  Serial.print(F("MQTT msg size: "));
+  Serial.print(F(", msg size: "));
   Serial.println(length);
 }
 
