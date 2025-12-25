@@ -206,7 +206,6 @@ void loop() {
 
   if (rf_received.exchange(false)) {
     int num_bytes = radio.getPacketLength();
-    int state     = radio.readData(rf_buffer, num_bytes);
     Serial.print(F("RF msg size: "));
     Serial.print(num_bytes);
     Serial.print(F(", RSSI: "));
@@ -221,20 +220,23 @@ void loop() {
       Serial.print(num_bytes - sizeof(rf_buffer));
       Serial.println(F(" too short"));
     }
-    else if (state == RADIOLIB_ERR_NONE) {
-      if (register_packet(rf_buffer, num_bytes)) {
-        mqtt_transmit(rf_buffer, num_bytes);
-        Serial.println(F(""));
-      }
-      else {
-        Serial.println(F("rf -> mqtt: dedupped"));
-      }
-    }
-    else if (state == RADIOLIB_ERR_CRC_MISMATCH)
-      Serial.println(F("CRC mismatch"));
     else {
-      Serial.print(F("recv failed: "));
-      Serial.println(state);
+      int state = radio.readData(rf_buffer, num_bytes);
+      if (state == RADIOLIB_ERR_NONE) {
+        if (register_packet(rf_buffer, num_bytes)) {
+          mqtt_transmit(rf_buffer, num_bytes);
+          Serial.println(F(""));
+        }
+        else {
+          Serial.println(F("rf -> mqtt: dedupped"));
+        }
+      }
+      else if (state == RADIOLIB_ERR_CRC_MISMATCH)
+        Serial.println(F("CRC mismatch"));
+      else {
+        Serial.print(F("recv failed: "));
+        Serial.println(state);
+      }
     }
   }
 
