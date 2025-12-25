@@ -77,11 +77,16 @@ uint32_t adler32(const void *const buf, const size_t buflength) {
 bool register_packet(const uint8_t *const pl, const size_t len) {
   uint32_t hash = adler32(pl, len);
 
+  Serial.printf("[%08x]", hash);
+
   for(int i=0; i<MAX_N_DEDUP_HASHES; i++) {
-    if (dedup_hashes[i] == hash)
+    if (dedup_hashes[i] == hash) {
+      Serial.print("DUP ");
       return false;
+    }
   }
 
+  Serial.print(" ");
   dedup_hashes[dedup_hash_index] = hash;
   dedup_hash_index = (dedup_hash_index + 1) % MAX_N_DEDUP_HASHES;
 
