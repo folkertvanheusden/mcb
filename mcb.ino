@@ -8,7 +8,7 @@
 const char *const   mqtt_topic       = "meshcore/bridge";
 const char *const   mqtt_server      = "vps001.vanheusden.com";
 constexpr const int mqtt_server_port = 1883;
-#define MQTT_NAME "LoRaBridge"
+char               *mqtt_sub_topic   = nullptr;
 
 // LoRa settings
 #define CARRIER_FREQ 869.618
@@ -57,6 +57,8 @@ uint8_t rf_buffer[MAX_LORA_MSG_SIZE];
 uint32_t dedup_hashes[MAX_N_DEDUP_HASHES];
 int dedup_hash_index = 0;
 
+char sys_id[9] { 0 };
+
 // hash function
 uint32_t adler32(const void *const buf, const size_t buflength) {
         const uint8_t *buffer = reinterpret_cast<const uint8_t *>(buf);
@@ -87,6 +89,11 @@ bool register_packet(const uint8_t *const pl, const size_t len) {
 }
 
 void mqtt_callback(char* topic, byte* payload, unsigned int length) {
+  if (length == 0) {
+    Serial.println(F("Ignoring empty MQTT msg"));
+    return;
+  }
+
   std::unique_lock<std::mutex> lck(mqtt_lock);
   if (n_mqtt_entries >= MAX_N_MQTT_ENTRIES) {
     Serial.println(F("MQTT recv buffer full"));
@@ -151,6 +158,16 @@ void setup() {
 
   radio.setPacketReceivedAction(set_rf_recv_flag);
   start_rf_receive();
+
+  auto mac = WiFi.macAddress();
+  uint8_t temp[4] { };
+  for(int i=0; i<6; i++)
+    temp[i % 4] ^= mac[i];
+  sprintf(sys_id, "%08x", *reinterpret_cast<const uint32_t *>(temp));
+  Serial.print(F("System ID: "));
+  Serial.println(sys_id);
+
+  asprintf(&mqtt_sub_topic, "%s/#", mqtt_topic);
 }
 
 void check_mqtt(void) {
@@ -159,11 +176,11 @@ void check_mqtt(void) {
   if (!mqtt_client.connected()) {
     Serial.println(F(" *** MQTT reconnect"));
     mqtt_client.disconnect();
-    if (!mqtt_client.connect(MQTT_NAME)) {
+    if (!mqtt_client.connect(sys_id)) {
       Serial.println(F("MQTT connect failed"));
       ESP.restart();
     }
-    if (!mqtt_client.subscribe(mqtt_topic)) {
+    if (!mqtt_client.subscribe(mqtt_sub_topic)) {
       Serial.println(F("MQTT subscribe failed"));
       ESP.restart();
     }
@@ -172,7 +189,10 @@ void check_mqtt(void) {
 
 void mqtt_transmit(const uint8_t *const pl, const size_t len) {
   digitalWrite(LED_BUILTIN, HIGH);
-  mqtt_client.publish(mqtt_topic, pl, len, false);
+  char *pub_topic = nullptr;
+  asprintf(&pub_topic, "%s/%s", mqtt_topic, sys_id);
+  mqtt_client.publish(pub_topic, pl, len, false);
+  free(pub_topic);
   digitalWrite(LED_BUILTIN, LOW);
 }
 
@@ -215,7 +235,9 @@ void loop() {
     Serial.print(F(", freqerr: "));
     Serial.print(radio.getFrequencyError());
     Serial.print(F(" - "));
-    if (num_bytes > sizeof(rf_buffer)) {
+    if (num_bytes == 0)
+      Serial.println(F("ignoring empty msg"));
+    else if (num_bytes > sizeof(rf_buffer)) {
       Serial.print(F("truncated: "));
       Serial.print(num_bytes - sizeof(rf_buffer));
       Serial.println(F(" too short"));
