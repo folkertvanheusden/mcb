@@ -81,19 +81,16 @@ uint32_t adler32(const void *const buf, const size_t buflength) {
         return (s2 << 16) | s1;
 }
 
-bool register_packet(const uint8_t *const pl, const size_t len) {
+bool register_packet(const char *const source, const uint8_t *const pl, const size_t len) {
   uint32_t hash = adler32(pl, len);
-
-  Serial.printf("[%08x]", hash);
 
   for(int i=0; i<MAX_N_DEDUP_HASHES; i++) {
     if (dedup_hashes[i] == hash) {
-      Serial.print("DUP ");
+      Serial.printf("[%08x] %ld %s DUP\r\n", hash, millis(), source);
       return false;
     }
   }
 
-  Serial.print(" ");
   dedup_hashes[dedup_hash_index] = hash;
   dedup_hash_index = (dedup_hash_index + 1) % MAX_N_DEDUP_HASHES;
 
@@ -101,14 +98,12 @@ bool register_packet(const uint8_t *const pl, const size_t len) {
 }
 
 void mqtt_callback(char* topic, byte* payload, unsigned int length) {
-  Serial.print(F("MQTT "));
-  Serial.println(topic);
   if (length == 0) {
-    Serial.println(F(", ignoring empty msg"));
+    Serial.println(F("gnoring empty mqtt msg"));
     return;
   }
 
-  if (register_packet(payload, length)) {
+  if (register_packet("MQTT", payload, length)) {
     std::unique_lock<std::mutex> lck(mqtt_recv_lock);
     if (n_mqtt_recv_entries >= MAX_N_MQTT_ENTRIES) {
       Serial.println(F("mqtt recv buffer full"));
@@ -171,7 +166,7 @@ void mqtt_thread(void *) {
     std::unique_lock<std::mutex> lck(mqtt_send_lock);
     mqtt_send_cv.wait_for(lck, std::chrono::milliseconds(1));
     for(int i=0; i<n_mqtt_send_entries; i++) {
-        if (register_packet(mqtt_send_entries[i].buffer, mqtt_send_entries[i].n))
+        if (register_packet("RF", mqtt_send_entries[i].buffer, mqtt_send_entries[i].n))
           mqtt_transmit(mqtt_send_entries[i].buffer, mqtt_send_entries[i].n);
     }
     n_mqtt_send_entries = 0;
@@ -230,11 +225,7 @@ void setup() {
 void rf_transmit(const uint8_t *const pl, const size_t len) {
   digitalWrite(LED_BUILTIN, HIGH);
   int state = radio.transmit(pl, len);
-
   if (state == RADIOLIB_ERR_NONE) {
-    Serial.print(F("packet transmitted via RF, data rate: "));
-    Serial.print(radio.getDataRate());
-    Serial.println(F(" bps"));
   }
   else if (state == RADIOLIB_ERR_PACKET_TOO_LONG) {
     // the supplied packet was longer than 256 bytes
