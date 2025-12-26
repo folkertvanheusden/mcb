@@ -48,6 +48,8 @@ SX1262 radio = new Module(10, 1, 5, 4, spi, spi_settings);
 
 #define MAX_LORA_MSG_SIZE RADIOLIB_SX126X_MAX_PACKET_LENGTH
 
+TaskHandle_t mqtt_handle;
+
 struct mqtt_entry {
   uint8_t  buffer[MAX_LORA_MSG_SIZE];
   unsigned n;
@@ -66,6 +68,7 @@ std::condition_variable mqtt_send_cv;
 uint8_t rf_buffer[MAX_LORA_MSG_SIZE];
 
 #define MAX_N_DEDUP_HASHES 256
+std::mutex dedup_hash_lock;
 uint32_t dedup_hashes[MAX_N_DEDUP_HASHES];
 int dedup_hash_index = 0;
 
@@ -91,15 +94,19 @@ bool register_packet(const char *const source, const uint8_t *const pl, const si
 
   Serial.printf("[%08x] %ld %s ", hash, millis(), source);
 
-  for(int i=0; i<MAX_N_DEDUP_HASHES; i++) {
-    if (dedup_hashes[i] == hash) {
-      Serial.println(F("DUP"));
-      return false;
+  {
+    std::unique_lock<std::mutex> lck(dedup_hash_lock);
+    for(int i=0; i<MAX_N_DEDUP_HASHES; i++) {
+      if (dedup_hashes[i] == hash) {
+        lck.unlock();
+        Serial.println(F("DUP"));
+        return false;
+      }
     }
-  }
 
-  dedup_hashes[dedup_hash_index] = hash;
-  dedup_hash_index = (dedup_hash_index + 1) % MAX_N_DEDUP_HASHES;
+    dedup_hashes[dedup_hash_index] = hash;
+    dedup_hash_index = (dedup_hash_index + 1) % MAX_N_DEDUP_HASHES;
+  }
 
   Serial.println(F("OK"));
 
@@ -182,8 +189,6 @@ void mqtt_thread(void *) {
     n_mqtt_send_entries = 0;
   }
 }
-
-TaskHandle_t mqtt_handle;
 
 void setup() {
   Serial.begin(115200);
