@@ -3,6 +3,7 @@
 #include <mutex>
 #include <PubSubClient.h>
 #include <RadioLib.h>
+#include <SPI.h>
 #include <WiFiManager.h>
 
 // MQTT settings
@@ -32,6 +33,10 @@ SX1262 radio = new Module(5, 2, 3, 4);
 SX1262 radio = new Module(41, 39, 42, 40);
 #elif defined(HELTEC_V3)
 SX1262 radio = new Module(8, 14, 12, 13);
+#elif defined(T_BEAM_SUPREME)
+SPIClass spi(HSPI);
+SPISettings spi_settings(400000, MSBFIRST, SPI_MODE0);
+SX1262 radio = new Module(10, 1, 5, 4, spi, spi_settings);
 #else
 #error please configure the ESP32 to SX1262 pins in mcb.ino
 #endif
@@ -190,6 +195,7 @@ void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
 
   Serial.print(F("[SX126x] Initializing ... "));
+  spi.begin(12, 13, 11, 10);
   auto state = radio.begin(CARRIER_FREQ, BANDWIDTH, SF, CR, SYNC_WORD, POWER, PREAMBLE);
   if (state == RADIOLIB_ERR_NONE)
     Serial.println(F("success!"));
