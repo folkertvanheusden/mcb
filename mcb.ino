@@ -195,7 +195,9 @@ void setup() {
   pinMode(LED_BUILTIN, OUTPUT);
 
   Serial.print(F("[SX126x] Initializing ... "));
+#if defined(T_BEAM_SUPREME)
   spi.begin(12, 13, 11, 10);
+#endif
   auto state = radio.begin(CARRIER_FREQ, BANDWIDTH, SF, CR, SYNC_WORD, POWER, PREAMBLE);
   if (state == RADIOLIB_ERR_NONE)
     Serial.println(F("success!"));
