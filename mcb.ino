@@ -47,9 +47,9 @@ struct mqtt_entry {
 };
 
 #define MAX_N_MQTT_ENTRIES 10
-std::mutex mqtt_lock;
-std::array<mqtt_entry, MAX_N_MQTT_ENTRIES> mqtt_entries;
-int n_mqtt_entries = 0;
+std::mutex mqtt_recv_lock;
+std::array<mqtt_entry, MAX_N_MQTT_ENTRIES> mqtt_recv_entries;
+int n_mqtt_recv_entries = 0;
 
 uint8_t rf_buffer[MAX_LORA_MSG_SIZE];
 
@@ -102,15 +102,15 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length) {
     return;
   }
 
-  std::unique_lock<std::mutex> lck(mqtt_lock);
-  if (n_mqtt_entries >= MAX_N_MQTT_ENTRIES) {
+  std::unique_lock<std::mutex> lck(mqtt_recv_lock);
+  if (n_mqtt_recv_entries >= MAX_N_MQTT_ENTRIES) {
     Serial.println(F(", recv buffer full"));
     return;
   }
 
-  memcpy(mqtt_entries[n_mqtt_entries].buffer, payload, length);
-  mqtt_entries[n_mqtt_entries].n = length;
-  n_mqtt_entries++;
+  memcpy(mqtt_recv_entries[n_mqtt_recv_entries].buffer, payload, length);
+  mqtt_recv_entries[n_mqtt_recv_entries].n = length;
+  n_mqtt_recv_entries++;
 
   Serial.print(F(", msg size: "));
   Serial.println(length);
@@ -270,15 +270,15 @@ void loop() {
     }
   }
 
-  std::unique_lock<std::mutex> lck(mqtt_lock);
-  bool any_mqtt = n_mqtt_entries > 0;
-  for(int i=0; i<n_mqtt_entries; i++) {
-    if (register_packet(mqtt_entries[i].buffer, mqtt_entries[i].n))
-      rf_transmit(mqtt_entries[i].buffer, mqtt_entries[i].n);
+  std::unique_lock<std::mutex> lck(mqtt_recv_lock);
+  bool any_mqtt = n_mqtt_recv_entries > 0;
+  for(int i=0; i<n_mqtt_recv_entries; i++) {
+    if (register_packet(mqtt_recv_entries[i].buffer, mqtt_recv_entries[i].n))
+      rf_transmit(mqtt_recv_entries[i].buffer, mqtt_recv_entries[i].n);
     else
       Serial.println(F("mqtt -> rf: dedupped"));
   }
-  n_mqtt_entries = 0;
+  n_mqtt_recv_entries = 0;
   lck.unlock();
 
   if (any_mqtt)
