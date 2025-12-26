@@ -178,6 +178,8 @@ TaskHandle_t mqtt_handle;
 void setup() {
   Serial.begin(115200);
   Serial.setDebugOutput(true);
+  Serial.println(F("Git hash: " AUTO_VERSION));
+  Serial.println(F("Built on: " __DATE__ " " __TIME__));
 
   pinMode(LED_BUILTIN, OUTPUT);
 
@@ -229,15 +231,15 @@ void rf_transmit(const uint8_t *const pl, const size_t len) {
   }
   else if (state == RADIOLIB_ERR_PACKET_TOO_LONG) {
     // the supplied packet was longer than 256 bytes
-    Serial.println(F("rf packet too long!"));
+    Serial.println(F("rf packet too long"));
   }
   else if (state == RADIOLIB_ERR_TX_TIMEOUT) {
     // timeout occured while transmitting packet
-    Serial.println(F("rf timeout!"));
+    Serial.println(F("rf timeout"));
   }
   else {
     // some other error occurred
-    Serial.print(F("rf transmission failed, code "));
+    Serial.print(F("rf transmission failed, code: "));
     Serial.println(state);
   }
   digitalWrite(LED_BUILTIN, LOW);
