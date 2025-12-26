@@ -163,6 +163,7 @@ void check_mqtt(void) {
 
 void mqtt_thread(void *) {
   mqtt_client = new PubSubClient(mqtt_server, mqtt_server_port, mqtt_callback, wifi_client);
+  mqtt_client->setBufferSize(MAX_LORA_MSG_SIZE + 128);  // 128 is maximum topic size (limit by this app)
 
   for(;;) {
     check_mqtt();
