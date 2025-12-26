@@ -103,7 +103,7 @@ bool register_packet(const char *const source, const uint8_t *const pl, const si
 
 void mqtt_callback(char* topic, byte* payload, unsigned int length) {
   if (length == 0) {
-    Serial.println(F("gnoring empty mqtt msg"));
+    Serial.println(F("ignoring empty mqtt msg"));
     return;
   }
 
@@ -163,7 +163,7 @@ void check_mqtt(void) {
 
 void mqtt_thread(void *) {
   mqtt_client = new PubSubClient(mqtt_server, mqtt_server_port, mqtt_callback, wifi_client);
-  mqtt_client->setBufferSize(MAX_LORA_MSG_SIZE + 128);  // 128 is maximum topic size (limit by this app)
+//  mqtt_client->setBufferSize(MAX_LORA_MSG_SIZE + 128);  // 128 is maximum topic size (limit by this app)
 
   for(;;) {
     check_mqtt();
@@ -183,8 +183,9 @@ TaskHandle_t mqtt_handle;
 void setup() {
   Serial.begin(115200);
   Serial.setDebugOutput(true);
-  Serial.println(F("Git hash: " AUTO_VERSION));
-  Serial.println(F("Built on: " __DATE__ " " __TIME__));
+  Serial.println(F("Selected board: " SELBOARD));
+  Serial.println(F("Git hash      : " AUTO_VERSION));
+  Serial.println(F("Built on      : " __DATE__ " " __TIME__));
 
   pinMode(LED_BUILTIN, OUTPUT);
 
@@ -218,7 +219,7 @@ void setup() {
   auto mac = WiFi.macAddress();
   uint8_t temp[4] { };
   for(int i=0; i<6; i++)
-    temp[i % 4] ^= mac[i];
+    temp[i & 3] ^= mac[i];
   sprintf(sys_id, "%08x", *reinterpret_cast<const uint32_t *>(temp));
   Serial.print(F("System ID: "));
   Serial.println(sys_id);
