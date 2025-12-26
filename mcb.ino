@@ -1,4 +1,5 @@
 #include <atomic>
+#include <condition_variable>
 #include <mutex>
 #include <PubSubClient.h>
 #include <RadioLib.h>
@@ -9,6 +10,7 @@ const char *const   mqtt_topic       = "meshcore/bridge";
 const char *const   mqtt_server      = "vps001.vanheusden.com";
 constexpr const int mqtt_server_port = 1883;
 char               *mqtt_sub_topic   = nullptr;
+char               *mqtt_pub_topic   = nullptr;
 
 // LoRa settings
 #define CARRIER_FREQ 869.618
@@ -50,6 +52,11 @@ struct mqtt_entry {
 std::mutex mqtt_recv_lock;
 std::array<mqtt_entry, MAX_N_MQTT_ENTRIES> mqtt_recv_entries;
 int n_mqtt_recv_entries = 0;
+
+std::mutex mqtt_send_lock;
+std::array<mqtt_entry, MAX_N_MQTT_ENTRIES> mqtt_send_entries;
+int n_mqtt_send_entries = 0;
+std::condition_variable mqtt_send_cv;
 
 uint8_t rf_buffer[MAX_LORA_MSG_SIZE];
 
@@ -117,7 +124,7 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length) {
 }
 
 WiFiClient wifi_client;
-PubSubClient mqtt_client(mqtt_server, mqtt_server_port, mqtt_callback, wifi_client);
+PubSubClient *mqtt_client = nullptr;
 
 std::atomic_bool rf_received { false };
 
@@ -133,6 +140,45 @@ void start_rf_receive() {
     ESP.restart();
   }
 }
+
+void mqtt_transmit(const uint8_t *const pl, const size_t len) {
+  digitalWrite(LED_BUILTIN, HIGH);
+  mqtt_client->publish(mqtt_pub_topic, pl, len, false);
+  digitalWrite(LED_BUILTIN, LOW);
+}
+
+void check_mqtt(void) {
+  mqtt_client->loop();
+
+  if (!mqtt_client->connected()) {
+    Serial.println(F(" *** MQTT reconnect"));
+    mqtt_client->disconnect();
+    if (!mqtt_client->connect(sys_id)) {
+      Serial.println(F("MQTT connect failed"));
+      ESP.restart();
+    }
+    if (!mqtt_client->subscribe(mqtt_sub_topic)) {
+      Serial.println(F("MQTT subscribe failed"));
+      ESP.restart();
+    }
+  }
+}
+
+void mqtt_thread(void *) {
+  mqtt_client = new PubSubClient(mqtt_server, mqtt_server_port, mqtt_callback, wifi_client);
+
+  for(;;) {
+    check_mqtt();
+
+    std::unique_lock<std::mutex> lck(mqtt_send_lock);
+    mqtt_send_cv.wait_for(lck, std::chrono::milliseconds(1));
+    for(int i=0; i<n_mqtt_send_entries; i++)
+        mqtt_transmit(mqtt_send_entries[i].buffer, mqtt_send_entries[i].n);
+    n_mqtt_send_entries = 0;
+  }
+}
+
+TaskHandle_t mqtt_handle;
 
 void setup() {
   Serial.begin(115200);
@@ -175,33 +221,10 @@ void setup() {
   Serial.print(F("System ID: "));
   Serial.println(sys_id);
 
-  asprintf(&mqtt_sub_topic, "%s/#", mqtt_topic);
-}
+  asprintf(&mqtt_sub_topic, "%s/#",  mqtt_topic);
+  asprintf(&mqtt_pub_topic, "%s/%s", mqtt_topic, sys_id);
 
-void check_mqtt(void) {
-  mqtt_client.loop();
-
-  if (!mqtt_client.connected()) {
-    Serial.println(F(" *** MQTT reconnect"));
-    mqtt_client.disconnect();
-    if (!mqtt_client.connect(sys_id)) {
-      Serial.println(F("MQTT connect failed"));
-      ESP.restart();
-    }
-    if (!mqtt_client.subscribe(mqtt_sub_topic)) {
-      Serial.println(F("MQTT subscribe failed"));
-      ESP.restart();
-    }
-  }
-}
-
-void mqtt_transmit(const uint8_t *const pl, const size_t len) {
-  digitalWrite(LED_BUILTIN, HIGH);
-  char *pub_topic = nullptr;
-  asprintf(&pub_topic, "%s/%s", mqtt_topic, sys_id);
-  mqtt_client.publish(pub_topic, pl, len, false);
-  free(pub_topic);
-  digitalWrite(LED_BUILTIN, LOW);
+  xTaskCreatePinnedToCore(mqtt_thread, "mqtt", 10000, nullptr, 0, &mqtt_handle, 0);
 }
 
 void rf_transmit(const uint8_t *const pl, const size_t len) {
@@ -230,23 +253,12 @@ void rf_transmit(const uint8_t *const pl, const size_t len) {
 }
 
 void loop() {
-  check_mqtt();
-
   if (rf_received.exchange(false)) {
     int num_bytes = radio.getPacketLength();
-    Serial.print(F("RF msg size: "));
-    Serial.print(num_bytes);
-    Serial.print(F(", RSSI: "));
-    Serial.print(radio.getRSSI(true));
-    Serial.print(F(", SNR: "));
-    Serial.print(radio.getSNR());
-    Serial.print(F(", freqerr: "));
-    Serial.print(radio.getFrequencyError());
-    Serial.print(F(" - "));
     if (num_bytes == 0)
-      Serial.println(F("ignoring empty msg"));
+      Serial.println(F("RF ignoring empty msg"));
     else if (num_bytes > sizeof(rf_buffer)) {
-      Serial.print(F("truncated: "));
+      Serial.print(F("RF truncated: "));
       Serial.print(num_bytes - sizeof(rf_buffer));
       Serial.println(F(" too short"));
     }
@@ -254,8 +266,15 @@ void loop() {
       int state = radio.readData(rf_buffer, num_bytes);
       if (state == RADIOLIB_ERR_NONE) {
         if (register_packet(rf_buffer, num_bytes)) {
-          mqtt_transmit(rf_buffer, num_bytes);
-          Serial.println(F(""));
+          std::unique_lock<std::mutex> lck(mqtt_send_lock);
+          if (n_mqtt_send_entries >= MAX_N_MQTT_ENTRIES)
+            Serial.println(F("MQTT send buffer full"));
+          else {
+            memcpy(mqtt_send_entries[n_mqtt_send_entries].buffer, rf_buffer, num_bytes);
+            mqtt_send_entries[n_mqtt_send_entries].n = num_bytes;
+            n_mqtt_send_entries++;
+            mqtt_send_cv.notify_one();
+          }
         }
         else {
           Serial.println(F("rf -> mqtt: dedupped"));
