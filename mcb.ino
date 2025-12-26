@@ -102,25 +102,23 @@ bool register_packet(const uint8_t *const pl, const size_t len) {
 
 void mqtt_callback(char* topic, byte* payload, unsigned int length) {
   Serial.print(F("MQTT "));
-  Serial.print(topic);
-  Serial.print(F(": "));
+  Serial.println(topic);
   if (length == 0) {
     Serial.println(F(", ignoring empty msg"));
     return;
   }
 
-  std::unique_lock<std::mutex> lck(mqtt_recv_lock);
-  if (n_mqtt_recv_entries >= MAX_N_MQTT_ENTRIES) {
-    Serial.println(F(", recv buffer full"));
-    return;
+  if (register_packet(payload, length)) {
+    std::unique_lock<std::mutex> lck(mqtt_recv_lock);
+    if (n_mqtt_recv_entries >= MAX_N_MQTT_ENTRIES) {
+      Serial.println(F("mqtt recv buffer full"));
+      return;
+    }
+
+    memcpy(mqtt_recv_entries[n_mqtt_recv_entries].buffer, payload, length);
+    mqtt_recv_entries[n_mqtt_recv_entries].n = length;
+    n_mqtt_recv_entries++;
   }
-
-  memcpy(mqtt_recv_entries[n_mqtt_recv_entries].buffer, payload, length);
-  mqtt_recv_entries[n_mqtt_recv_entries].n = length;
-  n_mqtt_recv_entries++;
-
-  Serial.print(F(", msg size: "));
-  Serial.println(length);
 }
 
 WiFiClient wifi_client;
@@ -172,8 +170,10 @@ void mqtt_thread(void *) {
 
     std::unique_lock<std::mutex> lck(mqtt_send_lock);
     mqtt_send_cv.wait_for(lck, std::chrono::milliseconds(1));
-    for(int i=0; i<n_mqtt_send_entries; i++)
-        mqtt_transmit(mqtt_send_entries[i].buffer, mqtt_send_entries[i].n);
+    for(int i=0; i<n_mqtt_send_entries; i++) {
+        if (register_packet(mqtt_send_entries[i].buffer, mqtt_send_entries[i].n))
+          mqtt_transmit(mqtt_send_entries[i].buffer, mqtt_send_entries[i].n);
+    }
     n_mqtt_send_entries = 0;
   }
 }
@@ -265,20 +265,11 @@ void loop() {
     else {
       int state = radio.readData(rf_buffer, num_bytes);
       if (state == RADIOLIB_ERR_NONE) {
-        if (register_packet(rf_buffer, num_bytes)) {
-          std::unique_lock<std::mutex> lck(mqtt_send_lock);
-          if (n_mqtt_send_entries >= MAX_N_MQTT_ENTRIES)
-            Serial.println(F("MQTT send buffer full"));
-          else {
-            memcpy(mqtt_send_entries[n_mqtt_send_entries].buffer, rf_buffer, num_bytes);
-            mqtt_send_entries[n_mqtt_send_entries].n = num_bytes;
-            n_mqtt_send_entries++;
-            mqtt_send_cv.notify_one();
-          }
-        }
-        else {
-          Serial.println(F("rf -> mqtt: dedupped"));
-        }
+        std::unique_lock<std::mutex> lck(mqtt_send_lock);
+        memcpy(mqtt_send_entries[n_mqtt_send_entries].buffer, rf_buffer, num_bytes);
+        mqtt_send_entries[n_mqtt_send_entries].n = num_bytes;
+        n_mqtt_send_entries++;
+        mqtt_send_cv.notify_one();
       }
       else if (state == RADIOLIB_ERR_CRC_MISMATCH)
         Serial.println(F("CRC mismatch"));
@@ -291,12 +282,8 @@ void loop() {
 
   std::unique_lock<std::mutex> lck(mqtt_recv_lock);
   bool any_mqtt = n_mqtt_recv_entries > 0;
-  for(int i=0; i<n_mqtt_recv_entries; i++) {
-    if (register_packet(mqtt_recv_entries[i].buffer, mqtt_recv_entries[i].n))
+  for(int i=0; i<n_mqtt_recv_entries; i++)
       rf_transmit(mqtt_recv_entries[i].buffer, mqtt_recv_entries[i].n);
-    else
-      Serial.println(F("mqtt -> rf: dedupped"));
-  }
   n_mqtt_recv_entries = 0;
   lck.unlock();
 
