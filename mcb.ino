@@ -13,6 +13,9 @@ constexpr const int mqtt_server_port = 1883;
 char               *mqtt_sub_topic   = nullptr;
 char               *mqtt_pub_topic   = nullptr;
 
+// deduplicates only the payload for improved loop detection
+#define MESHCORE_MODE
+
 // LoRa settings
 #define CARRIER_FREQ 869.618
 #define BANDWIDTH    62.5
@@ -70,9 +73,13 @@ uint8_t rf_buffer[MAX_LORA_MSG_SIZE];
 #define MAX_N_DEDUP_HASHES 256
 std::mutex dedup_hash_lock;
 uint32_t dedup_hashes[MAX_N_DEDUP_HASHES];
-int dedup_hash_index = 0;
+uint16_t dedup_hash_index = 0;
 
 char sys_id[9] { 0 };
+
+uint32_t prev_millis = 0;
+uint32_t hash_ok     = 0;
+uint32_t hash_dup    = 0;
 
 // hash function
 uint32_t adler32(const void *const buf, const size_t buflength) {
@@ -89,17 +96,33 @@ uint32_t adler32(const void *const buf, const size_t buflength) {
         return (s2 << 16) | s1;
 }
 
-bool register_packet(const char *const source, const uint8_t *const pl, const size_t len) {
-  uint32_t hash = adler32(pl, len);
+void emit_stats() {
+  Serial.printf("[%.2f%%]", hash_dup * 100. / (hash_dup + hash_ok));
+}
 
-  Serial.printf("[%08x] %ld %s ", hash, millis(), source);
+bool register_packet(const char *const source, const uint8_t *const pl, const size_t len) {
+  uint32_t now      = millis();
+#ifdef MESHCORE_MODE
+  uint16_t path_len = pl[1];
+  uint16_t offset   = 2 + path_len;
+  if (offset >= len)
+    return false;
+  uint32_t hash     = adler32(&pl[offset], len - offset);
+  Serial.printf("[%08x](%d) %ld %s ", hash, path_len, now - prev_millis, source);
+#else
+  uint32_t hash     = adler32(pl, len);
+  Serial.printf("[%08x] %ld %s ", hash, now - prev_millis, source);
+#endif
+  prev_millis = now;
 
   {
     std::unique_lock<std::mutex> lck(dedup_hash_lock);
     for(int i=0; i<MAX_N_DEDUP_HASHES; i++) {
       if (dedup_hashes[i] == hash) {
         lck.unlock();
-        Serial.println(F("DUP"));
+        hash_dup++;
+        emit_stats();
+        Serial.println(F(" DUP"));
         return false;
       }
     }
@@ -108,7 +131,9 @@ bool register_packet(const char *const source, const uint8_t *const pl, const si
     dedup_hash_index = (dedup_hash_index + 1) % MAX_N_DEDUP_HASHES;
   }
 
-  Serial.println(F("OK"));
+  hash_ok++;
+  emit_stats();
+  Serial.println(F(" OK"));
 
   return true;
 }
