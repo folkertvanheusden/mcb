@@ -107,6 +107,11 @@ bool register_packet(const char *const source, const uint8_t *const pl, const si
   uint16_t offset   = 2 + path_len;
   if (offset >= len)
     return false;
+  uint8_t route     = pl[0] & 3;
+  if (route == 0 /* flood */ || route == 3 /* direct */)
+    offset += 4;  // transport codes
+  if (offset >= len)
+    return false;
   uint32_t hash     = adler32(&pl[offset], len - offset);
   Serial.printf("[%08x](%d) %ld %s ", hash, path_len, now - prev_millis, source);
 #else
