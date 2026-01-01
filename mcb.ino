@@ -32,20 +32,51 @@ char               *mqtt_pub_topic   = nullptr;
 // BUSY pin:  4
 #if defined(XIAO_HEADERS)
 SX1262 radio = new Module(5, 2, 3, 4);
+
 #elif defined(XIAO_CONNECTOR)
 SX1262 radio = new Module(41, 39, 42, 40);
+
 #elif defined(HELTEC_V3)
 SX1262 radio = new Module(8, 14, 12, 13);
+#define DISPTYPE_SSD1306
+#define USER_BUTTON 0
+#define PIN_SDA 17
+#define PIN_SCL 18
+#define PIN_RST_OLED 21
+
 #elif defined(T_BEAM_1_2)
 SX1276 radio = new Module(18, 26, 23);
 #undef POWER
 #define POWER        20
+
 #elif defined(T_BEAM_SUPREME)
-SPIClass spi(HSPI);
+SPIClass    spi(HSPI);
 SPISettings spi_settings(400000, MSBFIRST, SPI_MODE0);
-SX1262 radio = new Module(10, 1, 5, 4, spi, spi_settings);
+SX1262      radio = new Module(10, 1, 5, 4, spi, spi_settings);
+#define PIN_SDA 17
+#define PIN_SCL 18
+#define DISPTYPE_SH1106
+
 #else
 #error please configure the ESP32 to SX1262 pins in mcb.ino
+#endif
+
+#if defined(DISPTYPE_SH1106)
+#define HAS_DISPLAY
+#include <U8g2lib.h>
+U8G2_SH1106_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ PIN_RST_OLED);
+#endif
+#if defined(DISPTYPE_SSD1306)
+#define HAS_DISPLAY
+#include <U8g2lib.h>
+U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ PIN_RST_OLED);
+#define SET_DISP_I2C_PORT (0x3c*2)
+#endif
+#if defined(HAS_DISPLAY)
+#include <Wire.h>
+std::atomic_uint32_t disp_since     { 0     };
+TaskHandle_t         disp_handle    {       };
+std::atomic_bool     button_pressed { false };
 #endif
 
 // WiFi settings
@@ -85,19 +116,56 @@ uint32_t prev_millis = 0;
 uint32_t hash_ok     = 0;
 uint32_t hash_dup    = 0;
 
+void disp_text(const char *const txt) {
+#if defined(HAS_DISPLAY)
+  disp_since = millis();
+  u8g2.setPowerSave(0);
+  u8g2.clearBuffer();
+  u8g2.setFont(u8g2_font_ncenB08_tr);
+  u8g2.drawStr(0, 10, txt);
+  u8g2.sendBuffer();
+  u8g2.display();
+//  u8g2.firstPage();
+//  while(u8g2.nextPage()) {
+//  }
+#endif
+}
+
+void disp_thread(void *) {
+  for(;;) {
+    vTaskDelay(100 / portTICK_PERIOD_MS);
+#if defined(HAS_DISPLAY)
+    if (disp_since == 0)
+      continue;
+
+    uint32_t now = millis();
+    if (now - disp_since >= 1500) {
+      u8g2.setPowerSave(1);
+      disp_since = 0;
+    }
+#endif
+  }
+}
+
+void button_clicked() {
+#if defined(HAS_DISPLAY)
+  button_pressed = true;
+#endif
+}
+
 // hash function
-uint32_t adler32(const void *const buf, const size_t buflength) {
-        const uint8_t *buffer = reinterpret_cast<const uint8_t *>(buf);
+uint32_t adler32(const void *const buf, const size_t n) {
+  const uint8_t *buffer = reinterpret_cast<const uint8_t *>(buf);
 
-        uint32_t s1 = 1;
-        uint32_t s2 = 0;
+  uint32_t s1 = 1;
+  uint32_t s2 = 0;
 
-        for (size_t n = 0; n < buflength; n++) {
-                s1 = (s1 + buffer[n]) % 65521;
-                s2 = (s2 + s1) % 65521;
-        }
+  for (size_t i = 0; i < n; i++) {
+    s1 = (s1 + buffer[i]) % 65521;
+    s2 = (s2 + s1) % 65521;
+  }
 
-        return (s2 << 16) | s1;
+  return (s2 << 16) | s1;
 }
 
 void emit_stats() {
@@ -231,6 +299,13 @@ void setup() {
   Serial.println(F("Git hash      : " AUTO_VERSION));
   Serial.println(F("Built on      : " __DATE__ " " __TIME__));
 
+#if defined(HAS_DISPLAY)
+  Wire.begin(PIN_SDA, PIN_SCL);
+  u8g2.setI2CAddress(SET_DISP_I2C_PORT);
+  u8g2.begin();
+  disp_text("INIT");
+#endif
+
   pinMode(LED_BUILTIN, OUTPUT);
 
   Serial.print(F("[SX12xx] Initializing ... "));
@@ -275,6 +350,16 @@ void setup() {
   asprintf(&mqtt_pub_topic, "%s/%s", mqtt_topic, sys_id);
 
   xTaskCreatePinnedToCore(mqtt_thread, "mqtt", 10000, nullptr, 0, &mqtt_handle, 0);
+#if defined(HAS_DISPLAY)
+  xTaskCreatePinnedToCore(disp_thread, "display", 2048, nullptr, 0, &disp_handle, 0);
+#endif
+
+#if defined(USER_BUTTON)
+  pinMode(USER_BUTTON, INPUT);
+  attachInterrupt(digitalPinToInterrupt(USER_BUTTON), button_clicked, RISING);
+#endif
+
+  disp_text("GO!");
 }
 
 void rf_transmit(const uint8_t *const pl, const size_t len) {
@@ -296,6 +381,27 @@ void rf_transmit(const uint8_t *const pl, const size_t len) {
     Serial.println(state);
   }
   digitalWrite(LED_BUILTIN, LOW);
+}
+
+void show_statistics() {
+#if defined(HAS_DISPLAY)
+  disp_since = millis();
+  u8g2.setPowerSave(0);
+  u8g2.clearBuffer();
+  u8g2.setFont(u8g2_font_ncenB08_tr);
+  char buffer[10] { };
+  snprintf(buffer, sizeof buffer, "%d", hash_ok);
+  buffer[9] = 0x00;
+  u8g2.drawStr(0, 10, buffer);
+  snprintf(buffer, sizeof buffer, "%d", millis() / 1000);
+  buffer[9] = 0x00;
+  u8g2.drawStr(0, 20, buffer);
+  u8g2.sendBuffer();
+  u8g2.display();
+//  u8g2.firstPage();
+ // while(u8g2.nextPage()) {
+  //}
+#endif
 }
 
 void loop() {
@@ -335,4 +441,9 @@ void loop() {
 
   if (any_mqtt)
     start_rf_receive();
+
+#if defined(HAS_DISPLAY)
+  if (button_pressed)
+    show_statistics();
+#endif
 }
