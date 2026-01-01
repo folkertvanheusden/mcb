@@ -36,6 +36,10 @@ SX1262 radio = new Module(5, 2, 3, 4);
 SX1262 radio = new Module(41, 39, 42, 40);
 #elif defined(HELTEC_V3)
 SX1262 radio = new Module(8, 14, 12, 13);
+#elif defined(T_BEAM_1_2)
+SX1276 radio = new Module(18, 26, 23);
+#undef POWER
+#define POWER        20
 #elif defined(T_BEAM_SUPREME)
 SPIClass spi(HSPI);
 SPISettings spi_settings(400000, MSBFIRST, SPI_MODE0);
@@ -229,7 +233,7 @@ void setup() {
 
   pinMode(LED_BUILTIN, OUTPUT);
 
-  Serial.print(F("[SX126x] Initializing ... "));
+  Serial.print(F("[SX12xx] Initializing ... "));
 #if defined(T_BEAM_SUPREME)
   spi.begin(12, 13, 11, 10);
 #endif
