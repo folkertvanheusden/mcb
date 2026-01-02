@@ -44,6 +44,11 @@ SX1262 radio = new Module(8, 14, 12, 13);
 #define PIN_SCL 18
 #define PIN_RST_OLED 21
 
+#elif defined(LILYGO_T3)
+SX1276 radio = new Module(18, 26, 23);
+#undef POWER
+#define POWER        20
+
 #elif defined(T_BEAM_1_2)
 SX1276 radio = new Module(18, 26, 23);
 #undef POWER
@@ -252,10 +257,16 @@ void start_rf_receive() {
   }
 }
 
+void set_builtin_led(const byte state) {
+#if defined(LED_BUILTIN)
+  digitalWrite(LED_BUILTIN, state);
+#endif
+}
+
 void mqtt_transmit(const uint8_t *const pl, const size_t len) {
-  digitalWrite(LED_BUILTIN, HIGH);
+  set_builtin_led(HIGH);
   mqtt_client->publish(mqtt_pub_topic, pl, len, false);
-  digitalWrite(LED_BUILTIN, LOW);
+  set_builtin_led(LOW);
 }
 
 void check_mqtt(void) {
@@ -306,7 +317,9 @@ void setup() {
   disp_text("INIT");
 #endif
 
+#if defined(LED_BUILTIN)
   pinMode(LED_BUILTIN, OUTPUT);
+#endif
 
   Serial.print(F("[SX12xx] Initializing ... "));
 #if defined(T_BEAM_SUPREME)
@@ -363,7 +376,7 @@ void setup() {
 }
 
 void rf_transmit(const uint8_t *const pl, const size_t len) {
-  digitalWrite(LED_BUILTIN, HIGH);
+  set_builtin_led(HIGH);
   int state = radio.transmit(pl, len);
   if (state == RADIOLIB_ERR_NONE) {
   }
@@ -380,7 +393,7 @@ void rf_transmit(const uint8_t *const pl, const size_t len) {
     Serial.print(F("rf transmission failed, code: "));
     Serial.println(state);
   }
-  digitalWrite(LED_BUILTIN, LOW);
+  set_builtin_led(LOW);
 }
 
 void show_statistics() {
