@@ -87,7 +87,6 @@ std::atomic_bool     button_pressed { false };
 // WiFi settings
 #define WIFI_PORTAL_TIMEOUT 60
 #define WIFI_CONNECT_TIMEOUT 15
-#define WIFI_NAME "LoRaBridge"
 
 #define MAX_LORA_MSG_SIZE RADIOLIB_SX126X_MAX_PACKET_LENGTH
 
@@ -115,7 +114,7 @@ std::mutex dedup_hash_lock;
 uint32_t dedup_hashes[MAX_N_DEDUP_HASHES];
 uint16_t dedup_hash_index = 0;
 
-char sys_id[9] { 0 };
+char sys_id[19] { 0 };
 
 uint32_t prev_millis = 0;
 uint32_t hash_ok     = 0;
@@ -339,10 +338,23 @@ void setup() {
     ESP.restart();
   }
 
+  uint8_t mac[8];
+  esp_efuse_mac_get_default(mac);
+  Serial.print(F("MAC: "));
+  for(int i=0; i<6; i++) {
+    if (i)
+      Serial.print(':');
+    Serial.print(mac[i], HEX);
+  }
+  snprintf(sys_id, sizeof sys_id, "LoRaBr-%02x%02x%02x", mac[3], mac[4], mac[5]);
+  Serial.print(F(", system ID: "));
+  Serial.println(sys_id);
+
   WiFiManager wm;
+  wm.setHostname(sys_id);
   wm.setConfigPortalTimeout(WIFI_PORTAL_TIMEOUT);
   wm.setConnectTimeout(WIFI_CONNECT_TIMEOUT);
-  if (!wm.autoConnect(WIFI_NAME)) {
+  if (!wm.autoConnect(sys_id)) {
     Serial.print(F("WiFi failed, code "));
     Serial.println(state);
     ESP.restart();
@@ -350,14 +362,6 @@ void setup() {
 
   radio.setPacketReceivedAction(set_rf_recv_flag);
   start_rf_receive();
-
-  auto mac = WiFi.macAddress();
-  uint8_t temp[4] { };
-  for(int i=0; i<6; i++)
-    temp[i & 3] ^= mac[i];
-  sprintf(sys_id, "%08x", *reinterpret_cast<const uint32_t *>(temp));
-  Serial.print(F("System ID: "));
-  Serial.println(sys_id);
 
   asprintf(&mqtt_sub_topic, "%s/#",  mqtt_topic);
   asprintf(&mqtt_pub_topic, "%s/%s", mqtt_topic, sys_id);
