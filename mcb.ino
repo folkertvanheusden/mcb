@@ -58,27 +58,20 @@ SX1276 radio = new Module(18, 26, 23);
 SPIClass    spi(HSPI);
 SPISettings spi_settings(400000, MSBFIRST, SPI_MODE0);
 SX1262      radio = new Module(10, 1, 5, 4, spi, spi_settings);
-#define PIN_SDA 17
-#define PIN_SCL 18
-#define DISPTYPE_SH1106
 
 #else
 #error please configure the ESP32 to SX1262 pins in mcb.ino
 #endif
 
-#if defined(DISPTYPE_SH1106)
-#define HAS_DISPLAY
-#include <U8g2lib.h>
-U8G2_SH1106_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ PIN_RST_OLED);
-#endif
 #if defined(DISPTYPE_SSD1306)
 #define HAS_DISPLAY
-#include <U8g2lib.h>
-U8G2_SSD1306_128X64_NONAME_F_HW_I2C u8g2(U8G2_R0, /* reset=*/ PIN_RST_OLED);
-#define SET_DISP_I2C_PORT (0x3c*2)
+#define DISP_I2C_PORT 0x3c
+#include <Adafruit_GFX.h>
+#include <Adafruit_SSD1306.h>
+Adafruit_SSD1306 display(128, 64, &Wire, PIN_RST_OLED);
 #endif
+
 #if defined(HAS_DISPLAY)
-#include <Wire.h>
 std::atomic_uint32_t disp_since     { 0     };
 TaskHandle_t         disp_handle    {       };
 std::atomic_bool     button_pressed { false };
@@ -123,15 +116,11 @@ uint32_t hash_dup    = 0;
 void disp_text(const char *const txt) {
 #if defined(HAS_DISPLAY)
   disp_since = millis();
-  u8g2.setPowerSave(0);
-  u8g2.clearBuffer();
-  u8g2.setFont(u8g2_font_ncenB08_tr);
-  u8g2.drawStr(0, 10, txt);
-  u8g2.sendBuffer();
-  u8g2.display();
-//  u8g2.firstPage();
-//  while(u8g2.nextPage()) {
-//  }
+  display.ssd1306_command(SSD1306_DISPLAYON);
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  display.write(txt);
+  display.display();
 #endif
 }
 
@@ -144,7 +133,9 @@ void disp_thread(void *) {
 
     uint32_t now = millis();
     if (now - disp_since >= 1500) {
-      u8g2.setPowerSave(1);
+      display.ssd1306_command(SSD1306_DISPLAYOFF);
+      display.clearDisplay();
+      display.display();
       disp_since = 0;
     }
 #endif
@@ -311,16 +302,22 @@ void setup() {
 
 #if defined(HAS_DISPLAY)
   Wire.begin(PIN_SDA, PIN_SCL);
-  u8g2.setI2CAddress(SET_DISP_I2C_PORT);
-  u8g2.begin();
-  disp_text("INIT");
+  if (display.begin(SSD1306_SWITCHCAPVCC, DISP_I2C_PORT, true, false)) {
+    display.setTextSize(2);
+    display.setTextColor(SSD1306_WHITE);
+    display.cp437(true);
+    disp_text("INIT");
+  }
+  else {
+    Serial.print(F("Cannot initialize display"));
+  }
 #endif
 
 #if defined(LED_BUILTIN)
   pinMode(LED_BUILTIN, OUTPUT);
 #endif
 
-  Serial.print(F("[SX12xx] Initializing ... "));
+  Serial.print(F("[SX12xx] Initializing... "));
 #if defined(T_BEAM_SUPREME)
   spi.begin(12, 13, 11, 10);
 #endif
@@ -328,7 +325,8 @@ void setup() {
   if (state == RADIOLIB_ERR_NONE)
     Serial.println(F("success!"));
   else {
-    Serial.print(F("failed, code "));
+    disp_text("radio err");
+    Serial.print(F("failed, code: "));
     Serial.println(state);
     ESP.restart();
   }
@@ -350,6 +348,7 @@ void setup() {
   Serial.print(F(", system ID: "));
   Serial.println(sys_id);
 
+  disp_text("WiFi");
   WiFiManager wm;
   wm.setHostname(sys_id);
   wm.setConfigPortalTimeout(WIFI_PORTAL_TIMEOUT);
@@ -403,21 +402,15 @@ void rf_transmit(const uint8_t *const pl, const size_t len) {
 void show_statistics() {
 #if defined(HAS_DISPLAY)
   disp_since = millis();
-  u8g2.setPowerSave(0);
-  u8g2.clearBuffer();
-  u8g2.setFont(u8g2_font_ncenB08_tr);
-  char buffer[10] { };
-  snprintf(buffer, sizeof buffer, "%d", hash_ok);
-  buffer[9] = 0x00;
-  u8g2.drawStr(0, 10, buffer);
+  display.ssd1306_command(SSD1306_DISPLAYON);
+  display.clearDisplay();
+  display.setCursor(0, 0);
+  char buffer[16] { };
   snprintf(buffer, sizeof buffer, "%d", millis() / 1000);
-  buffer[9] = 0x00;
-  u8g2.drawStr(0, 20, buffer);
-  u8g2.sendBuffer();
-  u8g2.display();
-//  u8g2.firstPage();
- // while(u8g2.nextPage()) {
-  //}
+  display.println(buffer);
+  snprintf(buffer, sizeof buffer, "%d", hash_ok);
+  display.println(buffer);
+  display.display();
 #endif
 }
 
