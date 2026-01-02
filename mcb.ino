@@ -32,18 +32,28 @@ char               *mqtt_pub_topic   = nullptr;
 // BUSY pin:  4
 #if defined(XIAO_HEADERS)
 SX1262 radio = new Module(5, 2, 3, 4);
+
 #elif defined(XIAO_CONNECTOR)
 SX1262 radio = new Module(41, 39, 42, 40);
+
 #elif defined(HELTEC_V3)
 SX1262 radio = new Module(8, 14, 12, 13);
+
+#elif defined(LILYGO_T3)
+SX1276 radio = new Module(18, 26, 23);
+#undef POWER
+#define POWER        20
+
 #elif defined(T_BEAM_1_2)
 SX1276 radio = new Module(18, 26, 23);
 #undef POWER
 #define POWER        20
+
 #elif defined(T_BEAM_SUPREME)
 SPIClass spi(HSPI);
 SPISettings spi_settings(400000, MSBFIRST, SPI_MODE0);
 SX1262 radio = new Module(10, 1, 5, 4, spi, spi_settings);
+
 #else
 #error please configure the ESP32 to SX1262 pins in mcb.ino
 #endif
@@ -184,10 +194,16 @@ void start_rf_receive() {
   }
 }
 
+void set_builtin_led(const byte state) {
+#if defined(LED_BUILTIN)
+  digitalWrite(LED_BUILTIN, state);
+#endif
+}
+
 void mqtt_transmit(const uint8_t *const pl, const size_t len) {
-  digitalWrite(LED_BUILTIN, HIGH);
+  set_builtin_led(HIGH);
   mqtt_client->publish(mqtt_pub_topic, pl, len, false);
-  digitalWrite(LED_BUILTIN, LOW);
+  set_builtin_led(LOW);
 }
 
 void check_mqtt(void) {
@@ -231,7 +247,9 @@ void setup() {
   Serial.println(F("Git hash      : " AUTO_VERSION));
   Serial.println(F("Built on      : " __DATE__ " " __TIME__));
 
+#if defined(LED_BUILTIN)
   pinMode(LED_BUILTIN, OUTPUT);
+#endif
 
   Serial.print(F("[SX12xx] Initializing ... "));
 #if defined(T_BEAM_SUPREME)
@@ -278,7 +296,7 @@ void setup() {
 }
 
 void rf_transmit(const uint8_t *const pl, const size_t len) {
-  digitalWrite(LED_BUILTIN, HIGH);
+  set_builtin_led(HIGH);
   int state = radio.transmit(pl, len);
   if (state == RADIOLIB_ERR_NONE) {
   }
@@ -295,7 +313,7 @@ void rf_transmit(const uint8_t *const pl, const size_t len) {
     Serial.print(F("rf transmission failed, code: "));
     Serial.println(state);
   }
-  digitalWrite(LED_BUILTIN, LOW);
+  set_builtin_led(LOW);
 }
 
 void loop() {
