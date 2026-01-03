@@ -1,5 +1,6 @@
 #include <atomic>
 #include <condition_variable>
+#include <esp_mac.h>
 #include <mutex>
 #include <PubSubClient.h>
 #include <RadioLib.h>
@@ -453,7 +454,7 @@ void loop() {
     start_rf_receive();
 
 #if defined(HAS_DISPLAY)
-  if (button_pressed)
+  if (button_pressed.exchange(false))
     show_statistics();
 #endif
 }
