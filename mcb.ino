@@ -428,6 +428,7 @@ void loop() {
     else {
       int state = radio.readData(rf_buffer, num_bytes);
       if (state == RADIOLIB_ERR_NONE) {
+        // store in mqtt transmit queue
         std::unique_lock<std::mutex> lck(mqtt_send_lock);
         memcpy(mqtt_send_entries[n_mqtt_send_entries].buffer, rf_buffer, num_bytes);
         mqtt_send_entries[n_mqtt_send_entries].n = num_bytes;
@@ -443,6 +444,7 @@ void loop() {
     }
   }
 
+  // transmit any message that came in via mqtt
   std::unique_lock<std::mutex> lck(mqtt_recv_lock);
   bool any_mqtt = n_mqtt_recv_entries > 0;
   for(int i=0; i<n_mqtt_recv_entries; i++)
