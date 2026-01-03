@@ -72,6 +72,8 @@ SX1262      radio = new Module(10, 1, 5, 4, spi, spi_settings);
 Adafruit_SSD1306 display(128, 64, &Wire, PIN_RST_OLED);
 #endif
 
+#define DISPLAY_TIMEOUT 2500
+
 #if defined(HAS_DISPLAY)
 std::atomic_uint32_t disp_since     { 0     };
 TaskHandle_t         disp_handle    {       };
@@ -133,7 +135,7 @@ void disp_thread(void *) {
       continue;
 
     uint32_t now = millis();
-    if (now - disp_since >= 1500) {
+    if (now - disp_since >= DISPLAY_TIMEOUT) {
       display.ssd1306_command(SSD1306_DISPLAYOFF);
       display.clearDisplay();
       display.display();
