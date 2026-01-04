@@ -13,12 +13,9 @@
 #include "config.h"
 
 
-// MQTT settings
-const char *const   mqtt_topic       = MQTT_TOPIC;
-const char *const   mqtt_server      = MQTT_SERVER;
-constexpr const int mqtt_server_port = MQTT_SERVER_PORT;
-char               *mqtt_sub_topic   = nullptr;
-char               *mqtt_pub_topic   = nullptr;
+// MQTT
+char *mqtt_sub_topic = nullptr;
+char *mqtt_pub_topic = nullptr;
 
 // SX1262 radio setup
 // NSS pin:   5
@@ -304,7 +301,7 @@ void check_mqtt(void) {
 }
 
 void mqtt_thread(void *) {
-  mqtt_client = new PubSubClient(mqtt_server, mqtt_server_port, mqtt_callback, wifi_client);
+  mqtt_client = new PubSubClient(MQTT_SERVER, MQTT_SERVER_PORT, mqtt_callback, wifi_client);
   mqtt_client->setBufferSize(MAX_LORA_MSG_SIZE + 128);  // 128 is maximum topic size (limit by this app)
 
   for(;;) {
@@ -417,8 +414,8 @@ void setup() {
   radio.setPacketReceivedAction(set_rf_recv_flag);
   start_rf_receive();
 
-  asprintf(&mqtt_sub_topic, "%s/#",  mqtt_topic);
-  asprintf(&mqtt_pub_topic, "%s/%s", mqtt_topic, sys_id);
+  asprintf(&mqtt_sub_topic, "%s/#",  MQTT_TOPIC);
+  asprintf(&mqtt_pub_topic, "%s/%s", MQTT_TOPIC, sys_id);
 
   xTaskCreatePinnedToCore(mqtt_thread, "mqtt", 10000, nullptr, 0, &mqtt_handle, 0);
 #if defined(HAS_DISPLAY)
