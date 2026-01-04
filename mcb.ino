@@ -308,7 +308,7 @@ void mqtt_thread(void *) {
     check_mqtt();
 
     std::unique_lock<std::mutex> lck(mqtt_send_lock);
-    mqtt_send_cv.wait_for(lck, std::chrono::milliseconds(1));
+    mqtt_send_cv.wait_for(lck, std::chrono::milliseconds(50));
     for(int i=0; i<n_mqtt_send_entries; i++) {
       if (register_packet("RF", mqtt_send_entries[i].buffer, mqtt_send_entries[i].n))
         mqtt_transmit(mqtt_send_entries[i].buffer, mqtt_send_entries[i].n);
@@ -341,6 +341,7 @@ void setup_http_server() {
 
   if (!MDNS.begin(sys_id))
     Serial.println(F("Failed initializing MDNS"));
+  MDNS.addService("http", "tcp", 80);
 }
 
 void setup() {
