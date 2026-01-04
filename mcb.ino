@@ -10,24 +10,15 @@
 #include <RadioLib.h>
 #include <SPI.h>
 
+#include "config.h"
+
+
 // MQTT settings
-const char *const   mqtt_topic       = "meshcore/bridge";
-const char *const   mqtt_server      = "vps001.vanheusden.com";
-constexpr const int mqtt_server_port = 1883;
+const char *const   mqtt_topic       = MQTT_TOPIC;
+const char *const   mqtt_server      = MQTT_SERVER;
+constexpr const int mqtt_server_port = MQTT_SERVER_PORT;
 char               *mqtt_sub_topic   = nullptr;
 char               *mqtt_pub_topic   = nullptr;
-
-// deduplicates only the payload for better loop detection
-#define MESHCORE_MODE
-
-// LoRa settings
-#define CARRIER_FREQ 869.618
-#define BANDWIDTH    62.5
-#define SF           8
-#define CR           8
-#define SYNC_WORD    0x12
-#define POWER        22
-#define PREAMBLE     16
 
 // SX1262 radio setup
 // NSS pin:   5
@@ -86,8 +77,6 @@ Adafruit_SSD1306 display(128, 64, &Wire, PIN_RST_OLED);
 Adafruit_SH1106G display(128, 64, &Wire, -1);
 #endif
 
-#define DISPLAY_TIMEOUT 2500
-
 #if defined(HAS_DISPLAY)
 // initialize with 'now' in case the display still has
 // text from just before the reboot
@@ -96,10 +85,6 @@ TaskHandle_t         disp_handle    {              };
 std::atomic_bool     button_pressed { false        };
 bool                 disp_rc        { false        };
 #endif
-
-// WiFi settings
-#define WIFI_PORTAL_TIMEOUT 60
-#define WIFI_CONNECT_TIMEOUT 15
 
 #define MAX_LORA_MSG_SIZE RADIOLIB_SX126X_MAX_PACKET_LENGTH
 
@@ -307,7 +292,12 @@ void check_mqtt(void) {
   if (!mqtt_client->connected()) {
     Serial.println(F(" *** MQTT reconnect"));
     mqtt_client->disconnect();
-    if (!mqtt_client->connect(sys_id))
+#if defined(MQTT_USER)
+    bool mqtt_rc = mqtt_client->connect(sys_id, MQTT_USER, MQTT_PASSWORD);
+#else
+    bool mqtt_rc = mqtt_client->connect(sys_id);
+#endif
+    if (mqtt_rc == false)
       failed_reboot("MQTT connect failed");
     if (!mqtt_client->subscribe(mqtt_sub_topic))
       failed_reboot("MQTT subscribe failed");
