@@ -149,8 +149,7 @@ void disp_text(const char *const txt) {
 
 void failed_reboot(const char *const txt) {
   Serial.println(txt);
-  if (disp_rc)
-    disp_text(txt);
+  disp_text(txt);
   ESP.restart();
 }
 
@@ -390,8 +389,10 @@ void setup() {
   else
     failed_reboot("radio err");
 
+#if defined(USE_CRC)
   if (radio.setCRC(true) == RADIOLIB_ERR_INVALID_CRC_CONFIGURATION)
     failed_reboot("radio setup failed");
+#endif
 
   uint8_t mac[8];
   esp_efuse_mac_get_default(mac);
