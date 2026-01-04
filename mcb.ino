@@ -75,9 +75,11 @@ Adafruit_SSD1306 display(128, 64, &Wire, PIN_RST_OLED);
 #define DISPLAY_TIMEOUT 2500
 
 #if defined(HAS_DISPLAY)
-std::atomic_uint32_t disp_since     { 0     };
-TaskHandle_t         disp_handle    {       };
-std::atomic_bool     button_pressed { false };
+// initialize with 'now' in case the display still has
+// text from just before the reboot
+std::atomic_uint32_t disp_since     { millis() + 1 };
+TaskHandle_t         disp_handle    {              };
+std::atomic_bool     button_pressed { false        };
 #endif
 
 // WiFi settings
@@ -127,6 +129,12 @@ void disp_text(const char *const txt) {
 #endif
 }
 
+void failed_reboot(const char *const txt) {
+  Serial.println(txt);
+  disp_text(txt);
+  ESP.restart();
+}
+
 void disp_thread(void *) {
   for(;;) {
     vTaskDelay(100 / portTICK_PERIOD_MS);
@@ -153,16 +161,13 @@ void button_clicked() {
 
 // hash function
 uint32_t adler32(const void *const buf, const size_t n) {
-  const uint8_t *buffer = reinterpret_cast<const uint8_t *>(buf);
-
-  uint32_t s1 = 1;
-  uint32_t s2 = 0;
-
-  for (size_t i = 0; i < n; i++) {
+  const uint8_t  *buffer = reinterpret_cast<const uint8_t *>(buf);
+        uint32_t  s1     = 1;
+        uint32_t  s2     = 0;
+  for(size_t i = 0; i < n; i++) {
     s1 = (s1 + buffer[i]) % 65521;
     s2 = (s2 + s1) % 65521;
   }
-
   return (s2 << 16) | s1;
 }
 
@@ -243,11 +248,8 @@ void ICACHE_RAM_ATTR set_rf_recv_flag() {
 
 void start_rf_receive() {
   auto state = radio.startReceive();
-  if (state != RADIOLIB_ERR_NONE) {
-    Serial.print(F("failed, code: "));
-    Serial.println(state);
-    ESP.restart();
-  }
+  if (state != RADIOLIB_ERR_NONE)
+    failed_reboot("radio recv failed");
 }
 
 void set_builtin_led(const byte state) {
@@ -268,20 +270,16 @@ void check_mqtt(void) {
   if (!mqtt_client->connected()) {
     Serial.println(F(" *** MQTT reconnect"));
     mqtt_client->disconnect();
-    if (!mqtt_client->connect(sys_id)) {
-      Serial.println(F("MQTT connect failed"));
-      ESP.restart();
-    }
-    if (!mqtt_client->subscribe(mqtt_sub_topic)) {
-      Serial.println(F("MQTT subscribe failed"));
-      ESP.restart();
-    }
+    if (!mqtt_client->connect(sys_id))
+      failed_reboot("MQTT connect failed");
+    if (!mqtt_client->subscribe(mqtt_sub_topic))
+      failed_reboot("MQTT subscribe failed");
   }
 }
 
 void mqtt_thread(void *) {
   mqtt_client = new PubSubClient(mqtt_server, mqtt_server_port, mqtt_callback, wifi_client);
-//  mqtt_client->setBufferSize(MAX_LORA_MSG_SIZE + 128);  // 128 is maximum topic size (limit by this app)
+  mqtt_client->setBufferSize(MAX_LORA_MSG_SIZE + 128);  // 128 is maximum topic size (limit by this app)
 
   for(;;) {
     check_mqtt();
@@ -327,17 +325,11 @@ void setup() {
   auto state = radio.begin(CARRIER_FREQ, BANDWIDTH, SF, CR, SYNC_WORD, POWER, PREAMBLE);
   if (state == RADIOLIB_ERR_NONE)
     Serial.println(F("success!"));
-  else {
-    disp_text("radio err");
-    Serial.print(F("failed, code: "));
-    Serial.println(state);
-    ESP.restart();
-  }
+  else
+    failed_reboot("radio err");
 
-  if (radio.setCRC(true) == RADIOLIB_ERR_INVALID_CRC_CONFIGURATION) {
-    Serial.println(F("Selected CRC is invalid for this module!"));
-    ESP.restart();
-  }
+  if (radio.setCRC(true) == RADIOLIB_ERR_INVALID_CRC_CONFIGURATION)
+    failed_reboot("radio setup failed");
 
   uint8_t mac[8];
   esp_efuse_mac_get_default(mac);
@@ -356,11 +348,8 @@ void setup() {
   wm.setHostname(sys_id);
   wm.setConfigPortalTimeout(WIFI_PORTAL_TIMEOUT);
   wm.setConnectTimeout(WIFI_CONNECT_TIMEOUT);
-  if (!wm.autoConnect(sys_id)) {
-    Serial.print(F("WiFi failed, code "));
-    Serial.println(state);
-    ESP.restart();
-  }
+  if (!wm.autoConnect(sys_id))
+    failed_reboot("WiFi start fail");
 
   radio.setPacketReceivedAction(set_rf_recv_flag);
   start_rf_receive();
