@@ -17,7 +17,7 @@ constexpr const int mqtt_server_port = 1883;
 char               *mqtt_sub_topic   = nullptr;
 char               *mqtt_pub_topic   = nullptr;
 
-// deduplicates only the payload for improved loop detection
+// deduplicates only the payload for better loop detection
 #define MESHCORE_MODE
 
 // LoRa settings
