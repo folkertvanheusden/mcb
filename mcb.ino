@@ -59,6 +59,9 @@ SX1276 radio = new Module(18, 26, 23);
 SPIClass    spi(HSPI);
 SPISettings spi_settings(400000, MSBFIRST, SPI_MODE0);
 SX1262      radio = new Module(10, 1, 5, 4, spi, spi_settings);
+#define DISPTYPE_SH110x
+#define PIN_SDA 17
+#define PIN_SCL 18
 
 #else
 #error please configure the ESP32 to SX1262 pins in mcb.ino
@@ -72,6 +75,14 @@ SX1262      radio = new Module(10, 1, 5, 4, spi, spi_settings);
 Adafruit_SSD1306 display(128, 64, &Wire, PIN_RST_OLED);
 #endif
 
+#if defined(DISPTYPE_SH110x)
+#define HAS_DISPLAY
+#define DISP_I2C_PORT 0x3c
+#include <Adafruit_GFX.h>
+#include <Adafruit_SH110X.h>
+Adafruit_SH1106G display(128, 64, &Wire, -1);
+#endif
+
 #define DISPLAY_TIMEOUT 2500
 
 #if defined(HAS_DISPLAY)
@@ -80,6 +91,7 @@ Adafruit_SSD1306 display(128, 64, &Wire, PIN_RST_OLED);
 std::atomic_uint32_t disp_since     { millis() + 1 };
 TaskHandle_t         disp_handle    {              };
 std::atomic_bool     button_pressed { false        };
+bool                 disp_rc        { false        };
 #endif
 
 // WiFi settings
@@ -118,20 +130,33 @@ uint32_t prev_millis = 0;
 uint32_t hash_ok     = 0;
 uint32_t hash_dup    = 0;
 
+void set_disp_state(const bool on) {
+#if defined(HAS_DISPLAY)
+#if defined(DISPTYPE_SSD1306)
+  display.ssd1306_command(on ? SSD1306_DISPLAYON : SSD1306_DISPLAYOFF);
+#else
+  display.oled_command(on ? SH110X_DISPLAYON : SH110X_DISPLAYOFF);
+#endif
+#endif
+}
+
 void disp_text(const char *const txt) {
 #if defined(HAS_DISPLAY)
-  disp_since = millis();
-  display.ssd1306_command(SSD1306_DISPLAYON);
-  display.clearDisplay();
-  display.setCursor(0, 0);
-  display.write(txt);
-  display.display();
+  if (disp_rc) {
+    disp_since = millis();
+    set_disp_state(true);
+    display.clearDisplay();
+    display.setCursor(0, 0);
+    display.write(txt);
+    display.display();
+  }
 #endif
 }
 
 void failed_reboot(const char *const txt) {
   Serial.println(txt);
-  disp_text(txt);
+  if (disp_rc)
+    disp_text(txt);
   ESP.restart();
 }
 
@@ -144,9 +169,11 @@ void disp_thread(void *) {
 
     uint32_t now = millis();
     if (now - disp_since >= DISPLAY_TIMEOUT) {
-      display.ssd1306_command(SSD1306_DISPLAYOFF);
-      display.clearDisplay();
-      display.display();
+      if (disp_rc) {
+        set_disp_state(false);
+        display.clearDisplay();
+        display.display();
+      }
       disp_since = 0;
     }
 #endif
@@ -162,8 +189,8 @@ void button_clicked() {
 // hash function
 uint32_t adler32(const void *const buf, const size_t n) {
   const uint8_t  *buffer = reinterpret_cast<const uint8_t *>(buf);
-        uint32_t  s1     = 1;
-        uint32_t  s2     = 0;
+  uint32_t  s1     = 1;
+  uint32_t  s2     = 0;
   for(size_t i = 0; i < n; i++) {
     s1 = (s1 + buffer[i]) % 65521;
     s2 = (s2 + s1) % 65521;
@@ -287,8 +314,8 @@ void mqtt_thread(void *) {
     std::unique_lock<std::mutex> lck(mqtt_send_lock);
     mqtt_send_cv.wait_for(lck, std::chrono::milliseconds(1));
     for(int i=0; i<n_mqtt_send_entries; i++) {
-        if (register_packet("RF", mqtt_send_entries[i].buffer, mqtt_send_entries[i].n))
-          mqtt_transmit(mqtt_send_entries[i].buffer, mqtt_send_entries[i].n);
+      if (register_packet("RF", mqtt_send_entries[i].buffer, mqtt_send_entries[i].n))
+        mqtt_transmit(mqtt_send_entries[i].buffer, mqtt_send_entries[i].n);
     }
     n_mqtt_send_entries = 0;
   }
@@ -303,9 +330,18 @@ void setup() {
 
 #if defined(HAS_DISPLAY)
   Wire.begin(PIN_SDA, PIN_SCL);
-  if (display.begin(SSD1306_SWITCHCAPVCC, DISP_I2C_PORT, true, false)) {
+#if defined(DISPTYPE_SH110x)
+  disp_rc = display.begin(DISP_I2C_PORT, true);
+#else
+  disp_rc = display.begin(SSD1306_SWITCHCAPVCC, DISP_I2C_PORT, true, false);
+#endif
+  if (disp_rc) {
     display.setTextSize(2);
+#if defined(DISPTYPE_SH110x)
+    display.setTextColor(SH110X_WHITE);
+#else
     display.setTextColor(SSD1306_WHITE);
+#endif
     display.cp437(true);
     disp_text("INIT");
   }
@@ -393,16 +429,18 @@ void rf_transmit(const uint8_t *const pl, const size_t len) {
 
 void show_statistics() {
 #if defined(HAS_DISPLAY)
-  disp_since = millis();
-  display.ssd1306_command(SSD1306_DISPLAYON);
-  display.clearDisplay();
-  display.setCursor(0, 0);
-  char buffer[16] { };
-  snprintf(buffer, sizeof buffer, "%d", millis() / 1000);
-  display.println(buffer);
-  snprintf(buffer, sizeof buffer, "%d", hash_ok);
-  display.println(buffer);
-  display.display();
+  if (disp_rc) {
+    disp_since = millis();
+    set_disp_state(true);
+    display.clearDisplay();
+    display.setCursor(0, 0);
+    char buffer[16] { };
+    snprintf(buffer, sizeof buffer, "%d", millis() / 1000);
+    display.println(buffer);
+    snprintf(buffer, sizeof buffer, "%d", hash_ok);
+    display.println(buffer);
+    display.display();
+  }
 #endif
 }
 
