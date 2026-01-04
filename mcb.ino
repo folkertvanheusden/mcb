@@ -2,6 +2,7 @@
 #include <atomic>
 #include <condition_variable>
 #include <esp_mac.h>
+#include <ESPmDNS.h>
 #include <WiFiManager.h>
 #include <ESPAsyncWebServer.h>  // included by wifimanager as well(?!)
 #include <mutex>
@@ -129,8 +130,11 @@ uint16_t dedup_hash_index = 0;
 char sys_id[19] { 0 };
 
 uint32_t prev_millis = 0;
+uint32_t rf_n        = 0;
+uint32_t mqtt_n      = 0;
 uint32_t hash_ok     = 0;
 uint32_t hash_dup    = 0;
+uint32_t crc_errors  = 0;
 
 #define HTTP_PORT 80
 AsyncWebServer *http_server = nullptr;
@@ -266,6 +270,7 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length) {
     memcpy(mqtt_recv_entries[n_mqtt_recv_entries].buffer, payload, length);
     mqtt_recv_entries[n_mqtt_recv_entries].n = length;
     n_mqtt_recv_entries++;
+    mqtt_n++;
   }
 }
 
@@ -335,7 +340,7 @@ void setup_http_server() {
   });
 
   http_server->on("/status", HTTP_GET, [](AsyncWebServerRequest *request) {
-    String response_text = "{ \"uptime\": " + String(millis()) + ", \"hash-ok\": " + String(hash_ok) + ", \"hash-dup\": " + String(hash_dup) + " }";
+    String response_text = "{ \"uptime\": " + String(millis()) + ", \"hash-ok\": " + String(hash_ok) + ", \"hash-dup\": " + String(hash_dup) + ", \"crc-errors\": " + String(crc_errors) + "\", \"RF-count\": " + String(rf_n) + ", \"MQTT-count\": " + String(mqtt_n) + " }";
     AsyncWebServerResponse *response = request->beginResponse(200, "application/json", response_text);
     request->send(response);
   });
@@ -347,6 +352,9 @@ void setup_http_server() {
   });
 
   http_server->begin();
+
+  if (!MDNS.begin(sys_id))
+    Serial.println(F("Failed initializing MDNS"));
 }
 
 void setup() {
@@ -493,9 +501,12 @@ void loop() {
         mqtt_send_entries[n_mqtt_send_entries].n = num_bytes;
         n_mqtt_send_entries++;
         mqtt_send_cv.notify_one();
+        rf_n++;
       }
-      else if (state == RADIOLIB_ERR_CRC_MISMATCH)
+      else if (state == RADIOLIB_ERR_CRC_MISMATCH) {
+        crc_errors++;
         Serial.println(F("CRC mismatch"));
+      }
       else {
         Serial.print(F("recv failed: "));
         Serial.println(state);
