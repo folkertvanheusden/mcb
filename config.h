@@ -16,7 +16,7 @@
 #define SYNC_WORD    0x12
 #define POWER        22
 #define PREAMBLE     16
-#define USE_CRC
+#define USE_CRC      true
 
 // display settings
 #define DISPLAY_TIMEOUT 2500  // in milliseconds

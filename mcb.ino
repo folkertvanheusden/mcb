@@ -389,10 +389,8 @@ void setup() {
   else
     failed_reboot("radio err");
 
-#if defined(USE_CRC)
-  if (radio.setCRC(true) == RADIOLIB_ERR_INVALID_CRC_CONFIGURATION)
+  if (radio.setCRC(USE_CRC) == RADIOLIB_ERR_INVALID_CRC_CONFIGURATION)
     failed_reboot("radio setup failed");
-#endif
 
   uint8_t mac[8];
   esp_efuse_mac_get_default(mac);
