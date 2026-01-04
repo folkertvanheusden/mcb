@@ -1,11 +1,13 @@
+#include <AsyncTCP.h>
 #include <atomic>
 #include <condition_variable>
 #include <esp_mac.h>
+#include <WiFiManager.h>
+#include <ESPAsyncWebServer.h>  // included by wifimanager as well(?!)
 #include <mutex>
 #include <PubSubClient.h>
 #include <RadioLib.h>
 #include <SPI.h>
-#include <WiFiManager.h>
 
 // MQTT settings
 const char *const   mqtt_topic       = "meshcore/bridge";
@@ -129,6 +131,9 @@ char sys_id[19] { 0 };
 uint32_t prev_millis = 0;
 uint32_t hash_ok     = 0;
 uint32_t hash_dup    = 0;
+
+#define HTTP_PORT 80
+AsyncWebServer *http_server = nullptr;
 
 void set_disp_state(const bool on) {
 #if defined(HAS_DISPLAY)
@@ -321,6 +326,29 @@ void mqtt_thread(void *) {
   }
 }
 
+void setup_http_server() {
+  http_server = new AsyncWebServer(HTTP_PORT);
+
+  http_server->on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
+    AsyncWebServerResponse *response = request->beginResponse(200, "text/text", "LoRa bridge: " SELBOARD " / " AUTO_VERSION " / " __DATE__ " " __TIME__);
+    request->send(response);
+  });
+
+  http_server->on("/status", HTTP_GET, [](AsyncWebServerRequest *request) {
+    String response_text = "{ \"uptime\": " + String(millis()) + ", \"hash-ok\": " + String(hash_ok) + ", \"hash-dup\": " + String(hash_dup) + " }";
+    AsyncWebServerResponse *response = request->beginResponse(200, "application/json", response_text);
+    request->send(response);
+  });
+
+  http_server->on("/version", HTTP_GET, [](AsyncWebServerRequest *request) {
+    String response_text = "{ \"board\": \"" + String(SELBOARD) + "\", \"GIT-hash\": \"" + String(AUTO_VERSION) + "\", \"build-on\": \"" + String(__DATE__ " " __TIME__) +  "\" }";
+    AsyncWebServerResponse *response = request->beginResponse(200, "application/json", response_text);
+    request->send(response);
+  });
+
+  http_server->begin();
+}
+
 void setup() {
   Serial.begin(115200);
   Serial.setDebugOutput(true);
@@ -386,6 +414,8 @@ void setup() {
   wm.setConnectTimeout(WIFI_CONNECT_TIMEOUT);
   if (!wm.autoConnect(sys_id))
     failed_reboot("WiFi start fail");
+
+  setup_http_server();
 
   radio.setPacketReceivedAction(set_rf_recv_flag);
   start_rf_receive();

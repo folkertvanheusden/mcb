@@ -33,6 +33,11 @@ X shall either `xiao_headers` (sx1262 via dupont cables), `xiao_connector` (the 
 * It will blink the LED when packets are seen (on MQTT or RF).
 * You can press the button on an Heltec v3 to see some statistics.
 
+* it runs a HTTP REST server that can be reached on the IP-address it shows in the serial console
+* REST endpoints:
+  * /status  - uptime & traffic statistics
+  * /version - board type, GIT hash, build timestamp
+
 
 ## see also
 
