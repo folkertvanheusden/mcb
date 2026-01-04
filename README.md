@@ -35,8 +35,8 @@ X shall either `xiao_headers` (sx1262 via dupont cables), `xiao_connector` (the 
 
 * it runs a HTTP REST server that can be reached on the IP-address shown in the serial console
 * REST endpoints:
-  * /status  - uptime & traffic statistics
-  * /version - board type, GIT hash, build timestamp
+  * `/status`  - uptime & traffic statistics
+  * `/version` - board type, GIT hash, build timestamp
 
 
 ## see also
