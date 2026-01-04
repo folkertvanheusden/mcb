@@ -19,7 +19,7 @@ It works transparently: you only need to know LoRa settings and then it should b
 
 ## configuration
 
-* For it to work you must adjust config.h (e.g. MQTT- and LoRa settings).
+* For it to work you must adjust `config.h` (e.g. MQTT- and LoRa settings).
 
 
 ## usage
