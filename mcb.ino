@@ -1,3 +1,4 @@
+#include <ArduinoOTA.h>
 #include <AsyncTCP.h>
 #include <atomic>
 #include <condition_variable>
@@ -344,6 +345,31 @@ void setup_http_server() {
   MDNS.addService("http", "tcp", 80);
 }
 
+void setupOTA() {
+  ArduinoOTA.setHostname(sys_id);
+  ArduinoOTA.setPassword(OTA_PASSWORD);
+
+  ArduinoOTA.onStart([]() {
+      Serial.println(F("Start"));
+      });
+  ArduinoOTA.onEnd([]() {
+      Serial.println(F(""));
+      Serial.println(F("End"));
+      });
+  ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+      Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+      });
+  ArduinoOTA.onError([](ota_error_t error) {
+      Serial.printf("Error[%u]: ", error);
+      if (error == OTA_AUTH_ERROR) Serial.println(F("Auth Failed"));
+      else if (error == OTA_BEGIN_ERROR) Serial.println(F("Begin Failed"));
+      else if (error == OTA_CONNECT_ERROR) Serial.println(F("Connect Failed"));
+      else if (error == OTA_RECEIVE_ERROR) Serial.println(F("Receive Failed"));
+      else if (error == OTA_END_ERROR) Serial.println(F("End Failed"));
+      });
+  ArduinoOTA.begin();
+}
+
 void setup() {
   Serial.begin(115200);
   Serial.setDebugOutput(true);
@@ -409,6 +435,8 @@ void setup() {
   wm.setConnectTimeout(WIFI_CONNECT_TIMEOUT);
   if (!wm.autoConnect(sys_id))
     failed_reboot("WiFi start fail");
+
+  setupOTA();
 
   setup_http_server();
 
@@ -516,4 +544,6 @@ void loop() {
   if (button_pressed.exchange(false))
     show_statistics();
 #endif
+
+  ArduinoOTA.handle();
 }

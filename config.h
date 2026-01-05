@@ -24,3 +24,5 @@
 // WiFi settings
 #define WIFI_PORTAL_TIMEOUT  60  // seconds
 #define WIFI_CONNECT_TIMEOUT 15
+
+#define OTA_PASSWORD "eemgeheim"
