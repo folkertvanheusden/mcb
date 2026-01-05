@@ -472,6 +472,7 @@ void show_statistics() {
 void loop() {
   if (rf_received.exchange(false)) {
     int num_bytes = radio.getPacketLength();
+    int state     = radio.readData(rf_buffer, num_bytes);
     if (num_bytes == 0)
       Serial.println(F("RF ignoring empty msg"));
     else if (num_bytes > sizeof(rf_buffer)) {
@@ -480,7 +481,6 @@ void loop() {
       Serial.println(F(" too short"));
     }
     else {
-      int state = radio.readData(rf_buffer, num_bytes);
       if (state == RADIOLIB_ERR_NONE) {
         // store in mqtt transmit queue
         std::unique_lock<std::mutex> lck(mqtt_send_lock);
