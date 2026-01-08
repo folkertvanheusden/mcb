@@ -494,8 +494,6 @@ void show_statistics() {
 }
 
 void loop() {
-  bool start_receive_required = false;
-
   if (rf_received.exchange(false)) {
     int num_bytes = radio.getPacketLength();
     int state     = radio.readData(rf_buffer, num_bytes);
@@ -524,12 +522,12 @@ void loop() {
       }
     }
 
-    start_receive_required = true;
+    start_rf_receive();
   }
 
   // transmit any message that came in via mqtt
   std::unique_lock<std::mutex> lck(mqtt_recv_lock);
-  start_receive_required |= mqtt_recv_entries.empty() == false;
+  bool start_receive_required = mqtt_recv_entries.empty() == false;
   for(auto & entry: mqtt_recv_entries)
       rf_transmit(entry.data(), entry.size());
   mqtt_recv_entries.clear();
