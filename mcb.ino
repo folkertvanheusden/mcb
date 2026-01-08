@@ -88,19 +88,13 @@ bool                 disp_rc        { false        };
 
 TaskHandle_t mqtt_handle;
 
-struct mqtt_entry {
-  uint8_t  buffer[MAX_LORA_MSG_SIZE];
-  unsigned n;
-};
 
 #define MAX_N_MQTT_ENTRIES 10
 std::mutex mqtt_recv_lock;
-std::array<mqtt_entry, MAX_N_MQTT_ENTRIES> mqtt_recv_entries;
-int n_mqtt_recv_entries = 0;
+std::vector<std::vector<uint8_t> > mqtt_recv_entries;
 
 std::mutex mqtt_send_lock;
-std::array<mqtt_entry, MAX_N_MQTT_ENTRIES> mqtt_send_entries;
-int n_mqtt_send_entries = 0;
+std::vector<std::vector<uint8_t> > mqtt_send_entries;
 std::condition_variable mqtt_send_cv;
 
 uint8_t rf_buffer[MAX_LORA_MSG_SIZE];
@@ -241,17 +235,19 @@ void mqtt_callback(char* topic, byte* payload, unsigned int length) {
     Serial.println(F("ignoring empty mqtt msg"));
     return;
   }
+  if (length > MAX_LORA_MSG_SIZE) {
+    Serial.println(F("ignoring overly long mqtt msg"));
+    return;
+  }
 
   if (register_packet("MQTT", payload, length)) {
     std::unique_lock<std::mutex> lck(mqtt_recv_lock);
-    if (n_mqtt_recv_entries >= MAX_N_MQTT_ENTRIES) {
+    if (mqtt_recv_entries.size() >= MAX_N_MQTT_ENTRIES) {
       Serial.println(F("mqtt recv buffer full"));
       return;
     }
 
-    memcpy(mqtt_recv_entries[n_mqtt_recv_entries].buffer, payload, length);
-    mqtt_recv_entries[n_mqtt_recv_entries].n = length;
-    n_mqtt_recv_entries++;
+    mqtt_recv_entries.push_back({ payload, payload + length });
     mqtt_n++;
   }
 }
@@ -310,11 +306,11 @@ void mqtt_thread(void *) {
 
     std::unique_lock<std::mutex> lck(mqtt_send_lock);
     mqtt_send_cv.wait_for(lck, std::chrono::milliseconds(50));
-    for(int i=0; i<n_mqtt_send_entries; i++) {
-      if (register_packet("RF", mqtt_send_entries[i].buffer, mqtt_send_entries[i].n))
-        mqtt_transmit(mqtt_send_entries[i].buffer, mqtt_send_entries[i].n);
+    for(auto & entry: mqtt_send_entries) {
+      if (register_packet("RF", entry.data(), entry.size()))
+        mqtt_transmit(entry.data(), entry.size());
     }
-    n_mqtt_send_entries = 0;
+    mqtt_send_entries.clear();
   }
 }
 
@@ -498,6 +494,8 @@ void show_statistics() {
 }
 
 void loop() {
+  bool start_receive_required = false;
+
   if (rf_received.exchange(false)) {
     int num_bytes = radio.getPacketLength();
     int state     = radio.readData(rf_buffer, num_bytes);
@@ -512,9 +510,7 @@ void loop() {
       if (state == RADIOLIB_ERR_NONE) {
         // store in mqtt transmit queue
         std::unique_lock<std::mutex> lck(mqtt_send_lock);
-        memcpy(mqtt_send_entries[n_mqtt_send_entries].buffer, rf_buffer, num_bytes);
-        mqtt_send_entries[n_mqtt_send_entries].n = num_bytes;
-        n_mqtt_send_entries++;
+        mqtt_send_entries.push_back({ rf_buffer, rf_buffer + num_bytes });
         mqtt_send_cv.notify_one();
         rf_n++;
       }
@@ -527,17 +523,19 @@ void loop() {
         Serial.println(state);
       }
     }
+
+    start_receive_required = true;
   }
 
   // transmit any message that came in via mqtt
   std::unique_lock<std::mutex> lck(mqtt_recv_lock);
-  bool any_mqtt = n_mqtt_recv_entries > 0;
-  for(int i=0; i<n_mqtt_recv_entries; i++)
-      rf_transmit(mqtt_recv_entries[i].buffer, mqtt_recv_entries[i].n);
-  n_mqtt_recv_entries = 0;
+  start_receive_required |= mqtt_recv_entries.empty() == false;
+  for(auto & entry: mqtt_recv_entries)
+      rf_transmit(entry.data(), entry.size());
+  mqtt_recv_entries.clear();
   lck.unlock();
 
-  if (any_mqtt)
+  if (start_receive_required)
     start_rf_receive();
 
 #if defined(HAS_DISPLAY)
