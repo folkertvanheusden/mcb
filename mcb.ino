@@ -7,7 +7,6 @@
 #include <WiFiManager.h>
 #include <ESPAsyncWebServer.h>  // included by wifimanager as well(?!)
 #include <mutex>
-#include <NTP.h>
 #include <PubSubClient.h>
 #include <RadioLib.h>
 #include <SPI.h>
@@ -119,9 +118,6 @@ uint32_t crc_errors  = 0;
 #define HTTP_PORT 80
 AsyncWebServer *http_server = nullptr;
 
-WiFiUDP wifi_udp;
-NTP ntp(wifi_udp);
-
 void set_disp_state(const bool on) {
 #if defined(HAS_DISPLAY)
 #if defined(DISPTYPE_SSD1306)
@@ -194,6 +190,9 @@ void emit_stats(const bool show_dup) {
 }
 
 bool register_packet(const char *const source, const uint8_t *const pl, const size_t len) {
+  timeval tv { };
+  gettimeofday(&tv, nullptr);
+
   uint32_t now      = millis();
 #ifdef MESHCORE_MODE
   uint16_t path_len = pl[1];
@@ -206,10 +205,10 @@ bool register_packet(const char *const source, const uint8_t *const pl, const si
   if (offset >= len)
     return false;
   uint32_t hash     = adler32(&pl[offset], len - offset);
-  Serial.printf("%u [%08x](%d) %ld %s ", unsigned(ntp.epoch()), hash, path_len, now - prev_millis, source);
+  Serial.printf("%u.%06u [%08x](%d) %ld %s ", unsigned(tv.tv_sec), unsigned(tv.tv_usec), hash, path_len, now - prev_millis, source);
 #else
   uint32_t hash     = adler32(pl, len);
-  Serial.printf("%u [%08x] %ld %s ", unsigned(ntp.epoch()), hash, now - prev_millis, source);
+  Serial.printf("%u.%06u [%08x] %ld %s ", unsigned(tv.tv_sec), unsigned(tv.tv_usec), hash, now - prev_millis, source);
 #endif
   prev_millis = now;
 
@@ -470,7 +469,7 @@ void setup() {
   attachInterrupt(digitalPinToInterrupt(USER_BUTTON), button_clicked, RISING);
 #endif
 
-  ntp.begin();
+  configTime(0, 0, "pool.ntp.org");
 
   disp_text("GO!");
 }
@@ -515,6 +514,8 @@ void show_statistics() {
 
 void loop() {
   if (rf_received.exchange(false)) {
+    timeval tv { };
+    gettimeofday(&tv, nullptr);
     int num_bytes = radio.getPacketLength();
     int state     = radio.readData(rf_buffer, num_bytes);
     if (num_bytes == 0)
@@ -539,7 +540,7 @@ void loop() {
           char buffer[3] { char(nh >= 10 ? 'a' + nh - 10 : '0' + nh), char(nl >= 10 ? 'a' + nl - 10 : '0' + nl), 0x00 };
           hex_dump += buffer;
         }
-        std::string meta_msg = "{ \"RSSI\": " + std::to_string(radio.getRSSI()) + ", \"SNR\": " + std::to_string(radio.getSNR()) + ", \"frequency-error\": " + std::to_string(radio.getFrequencyError()) + "\", \"mgs\": \"" + hex_dump + "\", \"uptime\": " + std::to_string(millis()) + "\", \"unix-time\": " + std::to_string(ntp.epoch()) + "\" }";
+        std::string meta_msg = "{ \"RSSI\": " + std::to_string(radio.getRSSI()) + ", \"SNR\": " + std::to_string(radio.getSNR()) + ", \"frequency-error\": " + std::to_string(radio.getFrequencyError()) + "\", \"mgs\": \"" + hex_dump + "\", \"uptime\": " + std::to_string(millis()) + "\", \"unix-time\": " + std::to_string(tv.tv_sec + tv.tv_usec / 1000000.) + "\" }";
         mqtt_send_meta_entries.push_back(meta_msg);
 #endif
 
@@ -575,5 +576,4 @@ void loop() {
 #endif
 
   ArduinoOTA.handle();
-  ntp.update();
 }
