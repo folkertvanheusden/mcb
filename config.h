@@ -1,5 +1,8 @@
 // MQTT settings
 #define MQTT_TOPIC      "meshcore/bridge"
+// only used for debugging: contains e.g. RSSI, SNR, frequency error
+// comment out to disable
+#define MQTT_META_TOPIC      "meshcore/bridge-meta"
 #define MQTT_SERVER     "vps001.vanheusden.com"
 #define MQTT_SERVER_PORT 1883
 // #define MQTT_USER       "mqtt-user"

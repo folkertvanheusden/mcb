@@ -7,6 +7,7 @@
 #include <WiFiManager.h>
 #include <ESPAsyncWebServer.h>  // included by wifimanager as well(?!)
 #include <mutex>
+#include <NTP.h>
 #include <PubSubClient.h>
 #include <RadioLib.h>
 #include <SPI.h>
@@ -15,8 +16,9 @@
 
 
 // MQTT
-char *mqtt_sub_topic = nullptr;
-char *mqtt_pub_topic = nullptr;
+char *mqtt_sub_topic      = nullptr;
+char *mqtt_pub_topic      = nullptr;
+char *mqtt_pub_meta_topic = nullptr;
 
 // SX1262 radio setup
 // NSS pin:   5
@@ -95,6 +97,7 @@ std::vector<std::vector<uint8_t> > mqtt_recv_entries;
 
 std::mutex mqtt_send_lock;
 std::vector<std::vector<uint8_t> > mqtt_send_entries;
+std::vector<std::string> mqtt_send_meta_entries;
 std::condition_variable mqtt_send_cv;
 
 uint8_t rf_buffer[MAX_LORA_MSG_SIZE];
@@ -115,6 +118,9 @@ uint32_t crc_errors  = 0;
 
 #define HTTP_PORT 80
 AsyncWebServer *http_server = nullptr;
+
+WiFiUDP wifi_udp;
+NTP ntp(wifi_udp);
 
 void set_disp_state(const bool on) {
 #if defined(HAS_DISPLAY)
@@ -183,8 +189,8 @@ uint32_t adler32(const void *const buf, const size_t n) {
   return (s2 << 16) | s1;
 }
 
-void emit_stats() {
-  Serial.printf("[%.2f%%]", hash_dup * 100. / (hash_dup + hash_ok));
+void emit_stats(const bool show_dup) {
+  Serial.printf("[%.2f%%]", (show_dup ? hash_dup : hash_ok) * 100. / (hash_dup + hash_ok));
 }
 
 bool register_packet(const char *const source, const uint8_t *const pl, const size_t len) {
@@ -200,10 +206,10 @@ bool register_packet(const char *const source, const uint8_t *const pl, const si
   if (offset >= len)
     return false;
   uint32_t hash     = adler32(&pl[offset], len - offset);
-  Serial.printf("[%08x](%d) %ld %s ", hash, path_len, now - prev_millis, source);
+  Serial.printf("%u [%08x](%d) %ld %s ", unsigned(ntp.epoch()), hash, path_len, now - prev_millis, source);
 #else
   uint32_t hash     = adler32(pl, len);
-  Serial.printf("[%08x] %ld %s ", hash, now - prev_millis, source);
+  Serial.printf("%u [%08x] %ld %s ", unsigned(ntp.epoch()), hash, now - prev_millis, source);
 #endif
   prev_millis = now;
 
@@ -213,7 +219,7 @@ bool register_packet(const char *const source, const uint8_t *const pl, const si
       if (dedup_hashes[i] == hash) {
         lck.unlock();
         hash_dup++;
-        emit_stats();
+        emit_stats(true);
         Serial.println(F(" DUP"));
         return false;
       }
@@ -224,7 +230,7 @@ bool register_packet(const char *const source, const uint8_t *const pl, const si
   }
 
   hash_ok++;
-  emit_stats();
+  emit_stats(false);
   Serial.println(F(" OK"));
 
   return true;
@@ -279,6 +285,10 @@ void mqtt_transmit(const uint8_t *const pl, const size_t len) {
   set_builtin_led(LOW);
 }
 
+void mqtt_meta_transmit(const std::string & msg) {
+  mqtt_client->publish(mqtt_pub_meta_topic, reinterpret_cast<const uint8_t *>(msg.c_str()), msg.size(), false);
+}
+
 void check_mqtt(void) {
   mqtt_client->loop();
 
@@ -306,11 +316,16 @@ void mqtt_thread(void *) {
 
     std::unique_lock<std::mutex> lck(mqtt_send_lock);
     mqtt_send_cv.wait_for(lck, std::chrono::milliseconds(50));
+
     for(auto & entry: mqtt_send_entries) {
       if (register_packet("RF", entry.data(), entry.size()))
         mqtt_transmit(entry.data(), entry.size());
     }
     mqtt_send_entries.clear();
+
+    for(auto & entry: mqtt_send_meta_entries)
+        mqtt_meta_transmit(entry);
+    mqtt_send_meta_entries.clear();
   }
 }
 
@@ -441,6 +456,9 @@ void setup() {
 
   asprintf(&mqtt_sub_topic, "%s/#",  MQTT_TOPIC);
   asprintf(&mqtt_pub_topic, "%s/%s", MQTT_TOPIC, sys_id);
+#if defined(MQTT_META_TOPIC)
+  asprintf(&mqtt_pub_meta_topic, "%s/%s", MQTT_META_TOPIC, sys_id);
+#endif
 
   xTaskCreatePinnedToCore(mqtt_thread, "mqtt", 10000, nullptr, 0, &mqtt_handle, 0);
 #if defined(HAS_DISPLAY)
@@ -451,6 +469,8 @@ void setup() {
   pinMode(USER_BUTTON, INPUT);
   attachInterrupt(digitalPinToInterrupt(USER_BUTTON), button_clicked, RISING);
 #endif
+
+  ntp.begin();
 
   disp_text("GO!");
 }
@@ -510,6 +530,19 @@ void loop() {
         std::unique_lock<std::mutex> lck(mqtt_send_lock);
         mqtt_send_entries.push_back({ rf_buffer, rf_buffer + num_bytes });
         mqtt_send_cv.notify_one();
+
+#if defined(MQTT_META_TOPIC)
+        std::string hex_dump;
+        for(int i=0; i<num_bytes; i++) {
+          int  nh = rf_buffer[i] >> 4;
+          int  nl = rf_buffer[i] & 15;
+          char buffer[3] { char(nh >= 10 ? 'a' + nh - 10 : '0' + nh), char(nl >= 10 ? 'a' + nl - 10 : '0' + nl), 0x00 };
+          hex_dump += buffer;
+        }
+        std::string meta_msg = "{ \"RSSI\": " + std::to_string(radio.getRSSI()) + ", \"SNR\": " + std::to_string(radio.getSNR()) + ", \"frequency-error\": " + std::to_string(radio.getFrequencyError()) + "\", \"mgs\": \"" + hex_dump + "\", \"uptime\": " + std::to_string(millis()) + "\", \"unix-time\": " + std::to_string(ntp.epoch()) + "\" }";
+        mqtt_send_meta_entries.push_back(meta_msg);
+#endif
+
         rf_n++;
       }
       else if (state == RADIOLIB_ERR_CRC_MISMATCH) {
@@ -542,4 +575,5 @@ void loop() {
 #endif
 
   ArduinoOTA.handle();
+  ntp.update();
 }
