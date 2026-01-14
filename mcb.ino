@@ -542,7 +542,7 @@ void loop() {
           char buffer[3] { char(nh >= 10 ? 'a' + nh - 10 : '0' + nh), char(nl >= 10 ? 'a' + nl - 10 : '0' + nl), 0x00 };
           hex_dump += buffer;
         }
-        std::string meta_msg = "{ \"RSSI\": " + std::to_string(radio.getRSSI()) + ", \"SNR\": " + std::to_string(radio.getSNR()) + ", \"frequency-error\": " + std::to_string(radio.getFrequencyError()) + ", \"msg\": \"" + hex_dump + "\", \"uptime\": " + std::to_string(millis()) + "\", \"unix-time\": " + std::to_string(tv.tv_sec + tv.tv_usec / 1000000.) + " }";
+        std::string meta_msg = "{ \"RSSI\": " + std::to_string(radio.getRSSI()) + ", \"SNR\": " + std::to_string(radio.getSNR()) + ", \"frequency-error\": " + std::to_string(radio.getFrequencyError()) + ", \"msg\": \"" + hex_dump + "\", \"uptime\": " + std::to_string(millis()) + ", \"unix-time\": " + std::to_string(tv.tv_sec + tv.tv_usec / 1000000.) + " }";
         mqtt_send_meta_entries.push_back(meta_msg);
 #endif
 
